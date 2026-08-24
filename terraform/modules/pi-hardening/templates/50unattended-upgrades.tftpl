@@ -1,0 +1,9 @@
+Unattended-Upgrade::Origins-Pattern {
+    "origin=Debian,codename=$${distro_codename},label=Debian-Security";
+    "origin=Raspbian,codename=$${distro_codename},label=Raspbian";
+    "origin=Raspberry Pi Foundation,codename=$${distro_codename},label=Raspberry Pi Foundation";
+};
+
+Unattended-Upgrade::Remove-Unused-Dependencies "true";
+Unattended-Upgrade::Automatic-Reboot "${unattended_upgrades_auto_reboot}";
+Unattended-Upgrade::Automatic-Reboot-Time "${unattended_upgrades_auto_reboot_time}";

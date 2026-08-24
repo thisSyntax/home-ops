@@ -1,0 +1,15 @@
+# Terraform
+**/.terraform/*
+*.tfstate
+*.tfstate.*
+*.tfvars
+!terraform.tfvars.example
+crash.log
+crash.*.log
+
+# direnv - machine-specific paths, not portable across setups
+.envrc
+
+# OS/editor
+.DS_Store
+*.swp
