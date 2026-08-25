@@ -10,7 +10,7 @@ This directory is not (yet) a git repository.
 
 ## How Claude Code is used here
 
-This is a personal learning project for Terraform. **Write Terraform/Kubernetes code only when explicitly asked to.** Otherwise, the role is documentation and guidance: help find what's next, explain how a pattern or resource works, review code the user writes, run read-only verification (`terraform validate`/`plan`), and diagnose issues — but let the user write the actual `.tf`/config changes themselves. This applies to code that's part of the learning build; live infrastructure debugging/troubleshooting (SSH, checking real Pi state, fixing a live misconfiguration) is a different mode where taking direct action is expected.
+This is a personal learning project for Terraform. **Write Terraform/Kubernetes code only when explicitly asked to for the purpose of example.** Otherwise, the role is documentation and guidance: help find what's next, explain how a pattern or resource works, review code the user writes, run read-only verification (`terraform validate`/`plan`), and diagnose issues — but let the user write the actual `.tf`/config changes themselves. This applies to code that's part of the learning build; live infrastructure debugging/troubleshooting (SSH, checking real Pi state, fixing a live misconfiguration) is a different mode where taking direct action is expected.
 
 ## Commands
 

@@ -1,0 +1,59 @@
+# Map of Raspberry Pis this module hardens and configures. Each key is an
+# arbitrary name you choose (used in resource addresses, e.g. for -replace).
+pi_hosts = {
+    Site-NI-DNS01 = {
+        static_ip = "192.168.1.53"
+        gateway = "192.168.1.1"
+        dns = ["1.1.1.1", "1.0.0.1"]     # required — also used as Pi-hole's own dns.upstreams, see README
+        bootstrap_ip = "192.168.1.152"    # this Pi's current IP before it's moved to static_ip
+    }
+    Site-NI-DNS02 = {
+        static_ip = "192.168.1.54"
+        gateway = "192.168.1.1"
+        dns = ["1.1.1.1", "1.0.0.1"]
+        bootstrap_ip = "192.168.1.155"
+    }
+}
+
+# SSH user Terraform connects as on every Pi (must have passwordless sudo — see README).
+ssh_user = "username"
+
+# Path to the private half of the SSH key trusted on each Pi. Optional; defaults to ~/.ssh/id_ed25519.
+ssh_private_key_path = "~/.ssh/id_ed25519"
+
+# Name of the app UFW should allow through the firewall (becomes the UFW app profile name, e.g. "Pi-hole").
+application_ufw_name = "Pi-hole"
+
+# Human-readable description stored in that UFW app profile.
+application_ufw_description = "Pi-hole DNS and Web Interface"
+
+# Ports that app profile opens: 53/tcp+udp for DNS, 80/443 for the admin web interface.
+application_ufw_ports = ["53/tcp", "53/udp", "80/tcp", "443/tcp"]
+
+# Max failed SSH login attempts within fail2ban_findtime before an IP is banned. Optional; defaults to 4.
+fail2ban_maxretry = 4
+
+# How long a banned IP stays banned. Optional; defaults to "1h".
+fail2ban_bantime = "1h"
+
+# Time window fail2ban_maxretry is measured over. Optional; defaults to "10m".
+fail2ban_findtime = "10m"
+
+# Whether unattended-upgrades reboots a Pi on its own when an installed update needs it. Optional; defaults to true.
+unattended_upgrades_auto_reboot = true
+
+# Time of day (Pi local time) that automatic reboot is allowed to happen, if one is needed. Optional; defaults to "03:00".
+unattended_upgrades_auto_reboot_time = "03:00"
+
+# How often (in days) the daily apt-upgrade job actually runs when its systemd timer fires. Optional; defaults to 1.
+auto_upgrades_days = 1
+
+# Custom DNS records (HOSTS form: "IP HOSTNAME"), fed into Pi-hole's dns.hosts setting.
+local_hosts = [
+    "192.168.1.254 example.internal",
+    "192.168.1.254 example2.internal"
+]
+
+# Pi-hole admin web interface password, shared across both Pis. Set post-install via
+# `pihole setpassword`, not pre-seeded into pihole.toml — see README.
+pihole_password = "changeme"

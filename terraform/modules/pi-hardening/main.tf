@@ -25,6 +25,7 @@ locals {
 
 data "external" "static_ip" {
     for_each = var.pi_hosts
+    depends_on = [null_resource.static_ip]
     program = ["C:/Program Files/Git/usr/bin/bash.exe", "${path.module}/scripts/static-ip-check.sh"]
 
     query = {
@@ -106,6 +107,7 @@ resource "null_resource" "static_ip" {
 
 data "external" "disable_x11_forwarding" {
     for_each = var.pi_hosts
+    depends_on = [null_resource.disable_x11_forwarding]
     program = ["C:/Program Files/Git/usr/bin/bash.exe", "${path.module}/scripts/remote-file-hash.sh"]
 
     query = {
@@ -157,6 +159,7 @@ resource "null_resource" "disable_x11_forwarding" {
 
 data "external" "ufw" {
     for_each = var.pi_hosts
+    depends_on = [null_resource.ufw]
     program = ["C:/Program Files/Git/usr/bin/bash.exe", "${path.module}/scripts/ufw-status-check.sh"]
 
     query = {
@@ -239,6 +242,7 @@ resource "null_resource" "ufw" {
 
 data "external" "fail2ban" {
     for_each = var.pi_hosts
+    depends_on = [null_resource.fail2ban]
     program = ["C:/Program Files/Git/usr/bin/bash.exe", "${path.module}/scripts/remote-file-hash.sh"]
 
     query = {
@@ -301,6 +305,7 @@ resource "null_resource" "fail2ban" {
 
 data "external" "unattended_upgrades" {
     for_each = var.pi_hosts
+    depends_on = [null_resource.unattended_upgrades]
     program = ["C:/Program Files/Git/usr/bin/bash.exe", "${path.module}/scripts/remote-file-hash.sh"]
 
     query = {
@@ -313,6 +318,7 @@ data "external" "unattended_upgrades" {
 
 data "external" "auto_upgrades" {
     for_each = var.pi_hosts
+    depends_on = [null_resource.unattended_upgrades]
     program = ["C:/Program Files/Git/usr/bin/bash.exe", "${path.module}/scripts/remote-file-hash.sh"]
 
     query = {
