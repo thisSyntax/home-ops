@@ -1,0 +1,79 @@
+# Name for this Pi - used as the key when calling module.pi_hardening (matters for -replace addressing).
+pi_key = "traefik-internal"
+
+# Static IP this Pi is moved to, and its network's gateway/DNS.
+static_ip = "192.168.0.5"
+gateway = "192.168.0.1"
+dns = ["1.1.1.1", "1.0.0.1"]
+
+# This Pi's current IP before it's moved to static_ip.
+bootstrap_ip = "192.168.0.155"
+
+# Docker provider connection string - reaches this Pi's Docker daemon over SSH.
+docker_host = "ssh://piuser@192.168.0.5:22"
+
+# Path on this Pi where Traefik's config is written and bind-mounted from. Optional; defaults to /etc/traefik.
+config_path = "/etc/traefik"
+
+# Whether to expose Traefik's dashboard on 127.0.0.1:8080. Optional; defaults to false.
+dashboard_enabled = true
+
+# Services this Traefik instance proxies to. Each key becomes a dynamic config file
+# (dynamic/<key>.yml) - Traefik's file provider watches that directory and merges every file in it.
+services = {
+    service = {
+        hostname   = "service.internal"
+        target_url = "http://192.168.0.16:3000"
+        entrypoint = "websecure"
+    }
+    webpage = {
+        hostname   = "webpage.internal"
+        target_url = "http://192.168.0.15"
+        entrypoint = "websecure"
+    }
+}
+
+# SSH user Terraform connects as (must have passwordless sudo — see pi-hardening's README).
+ssh_user = "username"
+
+# Path to the private half of the SSH key trusted on this Pi. Optional; defaults to ~/.ssh/id_ed25519.
+ssh_private_key_path = "~/.ssh/id_ed25519"
+
+# No application_ufw_name/description/ports here - Traefik's ports are Docker-published,
+# which bypasses UFW's INPUT chain entirely, so a UFW app profile for them would be a no-op.
+# The module still opens OpenSSH and enables UFW's default-deny-incoming baseline.
+
+# Max failed SSH login attempts within fail2ban_findtime before an IP is banned. Optional; defaults to 4.
+fail2ban_maxretry = 4
+
+# How long a banned IP stays banned. Optional; defaults to "1h".
+fail2ban_bantime = "1h"
+
+# Time window fail2ban_maxretry is measured over. Optional; defaults to "10m".
+fail2ban_findtime = "10m"
+
+# Whether unattended-upgrades reboots this Pi on its own when an installed update needs it. Optional; defaults to true.
+unattended_upgrades_auto_reboot = true
+
+# Time of day (Pi local time) that automatic reboot is allowed to happen, if one is needed. Optional; defaults to "03:00".
+unattended_upgrades_auto_reboot_time = "03:00"
+
+# How often (in days) the daily apt-upgrade job actually runs when its systemd timer fires. Optional; defaults to 1.
+auto_upgrades_days = 1
+
+# Email Let's Encrypt uses for certificate expiry/problem notifications. Not actually used
+# for certs on this instance (use_acme is false below) but still required input for
+# module.traefik/traefik.yml's ACME resolver block, which is left configured but unused.
+acme_email = "name@domain.com"
+
+# This Pi is LAN-only, so it uses a locally-trusted mkcert certificate instead of Let's
+# Encrypt - routers get tls: {} and pick up the cert below via SNI matching instead of
+# requesting one from a certResolver.
+use_acme = false
+
+# No mkcert_domains variable here - the mkcert certificate's covered hostnames are
+# derived automatically from every "hostname" value in services above (see main.tf's
+# locals.mkcert_domains), so there's only one place to add a new internal hostname.
+# Note this can't be a wildcard like "*.internal" even if you wanted one: NSS/Firefox
+# rejects wildcard certs whose suffix is a single label (fewer than 2 dots) - the same
+# rule that blocks "*.com" - so "*.internal" is always rejected regardless of intent.

@@ -53,11 +53,10 @@ first time it notices this), then `direnv allow` in this directory once to
 approve its `.envrc`.
 
 This setup is Git-Bash-specific by design, not an oversight — direnv's
-PowerShell hook has real, reproducible bugs on Windows (confirmed
-first-hand: a missing-`$HOME` issue, and a separate bug where
-`direnv export pwsh` mangles its own path while shelling out to bash to
-parse `.envrc`), while the bash hook works cleanly. Run the Terraform
-commands above from Git Bash, not PowerShell.
+PowerShell hook has real, reproducible bugs on Windows (a missing-`$HOME`
+issue, and a separate bug where `direnv export pwsh` mangles its own path
+while shelling out to bash to parse `.envrc`), while the bash hook works
+cleanly. Run the Terraform commands above from Git Bash, not PowerShell.
 
 `main.tf` calls `module "pi_hardening"`, deriving its leaner `pi_hosts`
 shape (just `static_ip`/`gateway`/`dns`/`interface`/`bootstrap_ip`) from

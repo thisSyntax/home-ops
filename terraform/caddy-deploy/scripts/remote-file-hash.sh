@@ -1,10 +1,7 @@
 #!/bin/bash
 
-# Exit if any of the intermediate steps fail
 set -e
 
-# Terraform invokes bash.exe directly (non-interactive, no profile sourcing),
-# so Git for Windows' usual PATH setup never runs - add it explicitly here.
 export PATH="/c/Program Files/Git/usr/bin:$PATH"
 
 QUERY=$(cat)

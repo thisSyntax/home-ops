@@ -41,8 +41,37 @@ hardware. This module is pure SSH-driven configuration management via
   not bootstrap SSH keys).
 - `ssh_user` has passwordless `sudo` for at least `apt-get`, `ufw`,
   `systemctl`, `nmcli`, `install`, `fail2ban-client`, and
-  `unattended-upgrade`. Without that, every `remote-exec` provisioner will
-  stall on a sudo password prompt.
+  `unattended-upgrade`. Without that, every `remote-exec` provisioner fails
+  immediately on `sudo: a password is required` — and if that failure
+  happens inside a provisioner with `on_failure = continue` (the static-IP
+  step is the one place this module has that), Terraform can't tell that
+  apart from the *expected* reason that provisioner can fail (see "The
+  static-IP step is *supposed* to look like it fails" below), so the
+  resource still gets recorded as successfully created even though nothing
+  actually happened on the Pi.
+
+  Set this up once per Pi, over an interactive SSH session — this needs the
+  account's real login password, which Terraform never has and can't supply
+  non-interactively:
+
+  ```bash
+  ssh piuser@<pi-ip>
+  sudo visudo -f /etc/sudoers.d/piuser-nopasswd
+  ```
+
+  Add one line, then save and exit (`visudo` validates the syntax before
+  writing the file, so a typo can't lock `sudo` out entirely):
+
+  ```
+  piuser ALL=(ALL) NOPASSWD: ALL
+  ```
+
+  Confirm it worked without leaving the session: `sudo -n true && echo ok`.
+  Scoping the `NOPASSWD` entry to just the commands this module actually
+  runs, instead of `ALL`, is more conservative but noticeably more fragile
+  to get right (exact paths, wildcard argument matching per command) — `ALL`
+  is what's shown here as the pragmatic default for a home-lab Pi that isn't
+  multi-tenant.
 - Terraform >= 1.5 — required for `check` blocks (see Drift detection
   below), not just recommended.
 - **Windows only**: Git for Windows installed at
@@ -77,11 +106,13 @@ addressable from outside.
 
 `application_ufw_name`, `application_ufw_description`, and
 `application_ufw_ports` control the *one* UFW app profile this module opens
-for whatever's running on the Pi — despite variable/resource names still
-saying "application" generically, this was originally hardcoded to Caddy
-and genericized later, so a caller can point it at any app. If a Pi needs
-more than one UFW-opened application, this module would need extending
-(currently only supports one profile per Pi).
+for whatever's running on the Pi — named generically so any caller can
+point it at any app, not just Caddy. All three are optional: a caller with
+no app-specific port to open (e.g. `traefik-node`, whose ports are
+Docker-published and bypass UFW entirely) can omit them, leaving the
+module's default-deny-incoming baseline as the only UFW config it applies.
+If a Pi needs more than one UFW-opened application, this module would need
+extending (currently only supports one profile per Pi).
 
 ## The static-IP step is *supposed* to look like it fails
 

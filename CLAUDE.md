@@ -4,63 +4,93 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this repo is
 
-A single Terraform root module, `terraform/pi-caddy-hardening/`, that hardens and configures two Raspberry Pis (one internet-facing, one internal-LAN) as Caddy reverse proxies — a Terraform port of a manual runbook, built as a way to learn Terraform's `for_each`/`depends_on`/provisioner/`data`/`check` mechanics against real infrastructure. The Pis themselves aren't provisioned by Terraform (they already exist as physical hardware); this module is pure SSH-driven configuration management via `null_resource` + `remote-exec`, not a typed-resource cloud deployment.
+A personal learning project for Terraform and Kubernetes, managing real home infrastructure:
 
-This directory is not (yet) a git repository.
+```
+terraform/
+├── modules/
+│   ├── pi-hardening/       reusable child module: static IP, UFW, Fail2Ban, disabled X11 forwarding, unattended-upgrades over SSH
+│   └── traefik-node/       reusable child module: Docker install + a Traefik reverse-proxy container, for one Pi
+├── caddy-deploy/           root module: Caddy reverse proxy on two Pis (calls pi-hardening)
+├── pihole-deploy/          root module: Pi-hole DNS on two Pis (calls pi-hardening)
+├── external-traefik-deploy/  root module: Traefik on the internet-facing Pi (calls traefik-node)
+├── internal-traefik-deploy/  root module: Traefik on the LAN-only Pi (calls traefik-node)
+└── k3s-deploy/             root module, early/in-progress: k3s cluster VMs on Proxmox (Telmate/proxmox provider)
+```
+
+`caddy-deploy` and `pihole-deploy` are independent root modules, each with its own Terraform state, each calling the shared `modules/pi-hardening` module for the common hardening baseline. `external-traefik-deploy` and `internal-traefik-deploy` are two more independent root modules, each calling `modules/traefik-node` — split into separate directories/state rather than one `pi_hosts`-map project because that module owns its own Docker provider connection, and Terraform provider configurations can't be created dynamically from a `for_each` (see that module's own section below). `k3s-deploy` is a different paradigm again — it targets Proxmox's typed `proxmox_vm_qemu` resource rather than SSH-driving pre-existing hardware, and is still being written from scratch (see its own section below).
+
+See each directory's own README for full prerequisites, usage, and design notes:
+- [`terraform/modules/pi-hardening`](terraform/modules/pi-hardening/README.md)
+- [`terraform/modules/traefik-node`](terraform/modules/traefik-node/README.md)
+- [`terraform/caddy-deploy`](terraform/caddy-deploy/README.md)
+- [`terraform/pihole-deploy`](terraform/pihole-deploy/README.md)
+- [`terraform/external-traefik-deploy`](terraform/external-traefik-deploy/README.md)
+- [`terraform/internal-traefik-deploy`](terraform/internal-traefik-deploy/README.md)
+- [`terraform/k3s-deploy`](terraform/k3s-deploy/README.md)
 
 ## How Claude Code is used here
 
-This is a personal learning project for Terraform. **Write Terraform/Kubernetes code only when explicitly asked to for the purpose of example.** Otherwise, the role is documentation and guidance: help find what's next, explain how a pattern or resource works, review code the user writes, run read-only verification (`terraform validate`/`plan`), and diagnose issues — but let the user write the actual `.tf`/config changes themselves. This applies to code that's part of the learning build; live infrastructure debugging/troubleshooting (SSH, checking real Pi state, fixing a live misconfiguration) is a different mode where taking direct action is expected.
+This is a personal learning project for Terraform and Kubernetes. **Write Terraform/Kubernetes code only when explicitly asked to for the purpose of examples.** Otherwise, the role is documentation and guidance: help find what's next, explain how a pattern or resource works, review code the user writes, run read-only verification (`terraform validate`/`plan`), and diagnose issues — but let the user write the actual `.tf`/config changes themselves. This applies to code that's part of the learning build; live infrastructure debugging/troubleshooting (SSH, checking real Pi/VM state, fixing a live misconfiguration) is a different mode where taking direct action is expected.
 
 ## Commands
 
+Each project directory is applied independently, with its own state — there's no root-level command spanning all of them.
+
 ```bash
-cd terraform/pi-caddy-hardening
-cp terraform.tfvars.example terraform.tfvars   # first time only; fill in real values
+cd terraform/caddy-deploy      # or pihole-deploy, external-traefik-deploy, internal-traefik-deploy, or (once further along) k3s-deploy
 terraform init
 terraform plan
 terraform apply
 ```
 
-- `terraform validate` — fast syntax/type check, doesn't touch real infrastructure.
-- No test suite, lint, or build step beyond Terraform's own tooling. Validate changes with `terraform validate` and `terraform plan` before running a real `apply`.
-- `plan`/`validate` are safe to run freely. `apply` is not simulated — it makes live SSH connections to the two Pis and changes their actual configuration (installs packages, rewrites config files, can reboot a Pi). Treat it accordingly.
+- `modules/pi-hardening` and `modules/traefik-node` have no state or `terraform.tfvars` of their own and are never applied directly — each is only invoked via a `module` block from a root module (`caddy-deploy`/`pihole-deploy` for `pi-hardening`; `external-traefik-deploy`/`internal-traefik-deploy` for `traefik-node`, which itself calls `pi-hardening`).
+- `caddy-deploy` and `pihole-deploy` load real secrets/IPs via [direnv](https://direnv.net/): each has an `.envrc` that points `TF_CLI_ARGS_plan`/`TF_CLI_ARGS_apply` at an external tfvars file under `C:\tfvars\`, so `plan`/`apply` need no `-var-file=` flag — but only from Git Bash (direnv's PowerShell hook has reproducible bugs on this setup; see `caddy-deploy/README.md`'s Usage section for the full setup). `external-traefik-deploy`/`internal-traefik-deploy` and `k3s-deploy` use a local `terraform.tfvars` in their own directory instead (gitignored the same way), with no direnv wiring.
+- `terraform validate` — fast syntax/type check, doesn't touch real infrastructure. Safe to run freely, unlike `apply`.
+- No CI, test suite, lint, or build step beyond Terraform's own tooling.
+- `apply` is not simulated: for `caddy-deploy`/`pihole-deploy`/`external-traefik-deploy`/`internal-traefik-deploy` it makes live SSH connections to real Pis and changes their actual configuration (installs packages, rewrites files, can reboot a Pi); the two Traefik projects also make live connections to each Pi's Docker daemon over SSH. For `k3s-deploy` it will create/destroy real Proxmox VMs. Treat accordingly.
 
 ## Architecture
 
-**Dependency graph** (from `main.tf`'s `depends_on`, not the order resources happen to appear in the file):
+### The `pi-hardening` pattern (shared by caddy-deploy, pihole-deploy)
 
+Neither project's Pis are provisioned by Terraform — they're physical hardware that already exists. Every resource is `null_resource` + `remote-exec`/`file` provisioners driving imperative SSH commands, since there's no Terraform provider that models "a UFW rule on an arbitrary SSH host" as a real typed resource.
+
+**Dependency graph** inside `modules/pi-hardening` (from `main.tf`'s `depends_on`, not file order):
 ```
 static_ip
   ├─ disable_x11_forwarding
   └─ ufw
        └─ fail2ban
-            └─ caddy
-                 └─ unattended_upgrades
+            └─ unattended_upgrades
 ```
+`ufw`, `fail2ban`, and `unattended_upgrades` are serialized because they all call `apt-get`, and two concurrent `apt-get` invocations on the same Pi would race on the dpkg lock. `disable_x11_forwarding` and `ufw` don't share `apt-get` state with each other, so they only depend on `static_ip` and run in parallel. A calling root module's own resources (e.g. `caddy-deploy`'s `caddy`, `pihole-deploy`'s `pihole`) depend on the *whole module* (`depends_on = [module.pi_hardening]`), since child-module internals aren't individually addressable from outside.
 
-`ufw`, `fail2ban`, `caddy`, and `unattended_upgrades` are serialized specifically because they all call `apt-get`, and two concurrent `apt-get` invocations on the same Pi would race on the dpkg lock. `disable_x11_forwarding` and `ufw` don't touch `apt-get` state shared with each other, so they only depend on `static_ip` and can run in parallel.
+**Drift detection**: every hardening resource has a matching `data "external"` + `check` block placed immediately before it in `main.tf`. Two comparison strategies, reused by the calling root modules for their own project-specific resource:
+- **File-hash** (`fail2ban`, `disable_x11_forwarding`, `unattended_upgrades`; also `caddy-deploy`'s `caddy`): `scripts/remote-file-hash.sh` SSHes in, hashes the deployed file, and compares it against a hash computed locally from the same `templatefile()` call that renders it (see each module's `locals` block).
+- **Condition-based** (`ufw`, `static_ip`; also `pihole-deploy`'s `pihole`): no single file to hash — the drift-relevant state is live command output (`ufw status verbose`, `nmcli`, `pihole-FTL --config`) rather than something rendered locally, so each has its own script returning named `"true"`/`"false"` fields.
+- Checks are informational only — a failed check prints a warning naming the drifted host(s), never blocks `apply`, taints a resource, or self-heals anything. Fix real drift with `terraform apply -replace='<address>["<host-key>"]'` (module-prefixed for hardening resources, e.g. `module.pi_hardening.null_resource.ufw["my-pi"]`).
+- `check` blocks don't support `for_each`, so the `data` sources live at the top level of `main.tf` rather than nested inside `check` — meaning they miss the "read as the final step of apply" timing guarantee a nested data source gets. A `-replace` that genuinely fixes drift can still record `"fail"` in that same apply's `check_results`; a follow-up plain `apply` is what records an accurate pass.
 
-**`null_resource` + `remote-exec` pattern**: there's no Terraform provider that models "a UFW rule on an arbitrary SSH host" as a real managed resource, so every resource here is imperative SSH commands gated by a `triggers` map — provisioners only re-run when a trigger value changes, which is a much thinner signal than a real typed-resource diff.
-
-**Drift detection**: every resource has a matching `data "external"` + `check` block placed immediately before it in `main.tf`. Two comparison strategies depending on what's actually drift-relevant:
-- **File-hash** (`caddy`, `fail2ban`, `disable_x11_forwarding`, `unattended_upgrades`): `scripts/remote-file-hash.sh` SSHes in, hashes the deployed file, and compares it against a hash computed locally from the same `templatefile()` call that renders it. The `locals` block at the top of `main.tf` is the single source of truth for these expected hashes, shared between each resource's own `triggers` and its drift check.
-- **Condition-based** (`ufw`, `static_ip`): no file to hash — the drift-relevant state is live command output (`ufw status verbose`, `nmcli`/`ip addr`) rather than something rendered locally. `scripts/ufw-status-check.sh` and `scripts/static-ip-check.sh` check specific conditions and return named `"true"`/`"false"` fields instead of a single hash.
-- Checks are informational only — a failed check prints a warning naming the drifted Pi(s), but never blocks `apply`, taints a resource, or self-heals anything. Fix real drift with `terraform apply -replace='null_resource.<name>["<pi-key>"]'`.
-- `check` blocks don't support `for_each`, so these `data` sources live at the top level of `main.tf` rather than nested inside their `check` — which means they miss the "read as the final step of apply" timing guarantee a nested data source gets. A `-replace` that genuinely fixes drift can still record that check as `"fail"` in that same apply's `check_results` (a stale read from before the fix landed); a follow-up plain `apply` is what records an accurate pass.
-
-**`templates/` vs `scripts/`**: `templates/` holds config rendered and pushed *to* a Pi via `provisioner "file"`. `scripts/` holds helpers executed *locally* by the `data "external"` drift checks and never pushed to a Pi — a deliberate separation even though both are just files on disk in this module.
-
-**Role-based Caddy config**: each entry in the `pi_hosts` variable has a `role` of `"external"` (real Let's Encrypt certs via Cloudflare DNS-01 — requires a WAN port-forward set up out of band, not managed by this module) or `"internal"` (Caddy's own self-signed CA — requires manually trusting the root cert on client devices).
-
-**Windows-specific gotcha**: `data "external"` blocks invoke the drift-check scripts via an explicit path to Git for Windows' `bash.exe` (`C:/Program Files/Git/usr/bin/bash.exe`), not a bare `"bash"`. If WSL is also installed, ambient `PATH` resolution can silently pick WSL's `bash.exe` instead, which is a different filesystem where Windows-style paths (like the SSH key path) don't resolve. The scripts themselves also explicitly export that same directory onto `PATH` as their first line, since Terraform invokes `bash.exe` non-interactively with no profile sourcing, so tools like `cat`/`grep`/`ssh` wouldn't otherwise be found.
+**Windows-specific gotcha**: every `data "external"` block invokes its drift-check script via an explicit path to Git for Windows' `bash.exe` (`C:/Program Files/Git/usr/bin/bash.exe`), not a bare `"bash"` — if WSL is also installed, ambient `PATH` resolution can silently pick WSL's `bash.exe` instead, a different filesystem where Windows-style paths (like the SSH key path) don't resolve.
 
 **The static-IP resource's SSH session dying mid-run is expected**: `nmcli con up` tears down the SSH connection the instant the IP actually changes, so Terraform never sees that provisioner's exit code. `on_failure = continue` on it is intentional, not a bug signal.
 
-**No separate reboot resource**: `unattended_upgrades_auto_reboot` / `unattended_upgrades_auto_reboot_time` (variables) let `unattended-upgrades` reboot each Pi autonomously, only when an installed update actually needs it, rather than forcing both proxies down on every `apply`.
+**No separate reboot resource**: `unattended_upgrades_auto_reboot`/`unattended_upgrades_auto_reboot_time` let `unattended-upgrades` reboot a Pi autonomously, only when an installed update actually needs it, rather than forcing it down on every `apply`.
 
-## Prerequisites for a real `apply`
+### The `traefik-node` pattern (external-traefik-deploy, internal-traefik-deploy)
 
-- SSH key auth already trusted on each Pi for `ssh_user` (this module does not bootstrap SSH keys).
-- `ssh_user` has passwordless `sudo` for at least `apt-get`, `ufw`, `systemctl`, `nmcli`, `install`, `fail2ban-client`, and `unattended-upgrade`.
-- Terraform >= 1.5 — required for `check` blocks, not just recommended.
+`modules/traefik-node` wraps `pi-hardening` and adds Docker + a Traefik reverse-proxy container on top, via `kreuzwerker/docker`'s typed `docker_image`/`docker_container` resources rather than another `null_resource`. It's called from exactly one Pi per root module (`external-traefik-deploy`, `internal-traefik-deploy`) instead of a `pi_hosts` map, because it owns its own `provider "docker" { host = var.docker_host }` block, and Terraform provider configurations can't be created dynamically from a `for_each`/`count` — a hard constraint in the language itself, not something a cleverer variable shape works around. See `modules/traefik-node/README.md` for the full dependency graph and known gaps.
+
+The two root modules differ only in how routers get a TLS certificate, via each's own `use_acme` value: `external-traefik-deploy` leaves `use_acme = true` and gets real Let's Encrypt certs through Traefik's HTTP-01 challenge (needs the Pi reachable on port 80 from the internet). `internal-traefik-deploy` sets `use_acme = false` and instead runs its own `null_resource.mkcert` to generate and push a locally-trusted certificate, since this Pi is LAN-only and can't satisfy a public ACME challenge — see that project's own README for the mkcert flow and CA-trust steps.
+
+### k3s-deploy (new, in progress)
+
+Targets Proxmox directly via the `Telmate/proxmox` provider (`~> 3.0`) — a different paradigm from the SSH-driven projects above: `proxmox_vm_qemu` is a real typed resource, not a `null_resource` wrapper. As of this writing it's just getting started (`main.tf` has a first-draft `provider`/`resource` block, `variables.tf` is still empty) — nothing here is an established pattern yet the way the hardening module's conventions are. One live gotcha already found: the provider's `disk`/`network` configuration is nested-block-based in `~> 3.0` (`disk { }`/`network { }`, or the combined `disks { }` block), not flat attributes, and there's no top-level `iso` attribute at all — ISO attachment lives inside a `disks { ide { ide2 { cdrom { iso = ... } } } }` block. A common gotcha when porting examples written against the older v2.x schema.
+
+## Prerequisites
+
+- Terraform >= 1.5 (required for `check` blocks, used by every SSH-driven project)
+- SSH key auth already trusted on each Pi, with passwordless `sudo` for the relevant commands — see each project's README for the exact command list
+- `external-traefik-deploy`/`internal-traefik-deploy` also need Docker reachable at `docker_host` over the same SSH key, once `pi-hardening` and the Docker-install step have run
+- Real secrets/IPs live outside this repo: `caddy-deploy`/`pihole-deploy` read theirs from `C:\tfvars\<project>.tfvars` via direnv; `external-traefik-deploy`/`internal-traefik-deploy`/`k3s-deploy` use a local `terraform.tfvars` in their own directory instead. Nothing sensitive is committed here (`.gitignore` excludes all `*.tfvars` except `*.tfvars.example`)

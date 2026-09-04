@@ -166,7 +166,7 @@ data "external" "ufw" {
         host = each.value.static_ip
         user = var.ssh_user
         key_path = pathexpand(var.ssh_private_key_path)
-        app_name = var.application_ufw_name
+        app_name = var.application_ufw_name != null ? var.application_ufw_name : ""
     }
 }
 
@@ -193,7 +193,7 @@ check "ufw_check" {
     }
 
     assert {
-        condition = alltrue([for k, v in var.pi_hosts : data.external.ufw[k].result.app_allowed == "true"])
+        condition = var.application_ufw_name == null || alltrue([for k, v in var.pi_hosts : data.external.ufw[k].result.app_allowed == "true"])
         error_message = "UFW is missing the App allow rule on: ${join(", ", [
             for k, v in var.pi_hosts : k if data.external.ufw[k].result.app_allowed != "true"
         ])}"
@@ -205,8 +205,8 @@ resource "null_resource" "ufw" {
     depends_on = [null_resource.static_ip]
 
     triggers = {
-        app_name = var.application_ufw_name
-        description = var.application_ufw_description
+        app_name = var.application_ufw_name != null ? var.application_ufw_name : ""
+        description = var.application_ufw_description != null ? var.application_ufw_description : ""
         ports_csv = join("|", var.application_ufw_ports)
     }
 
@@ -216,27 +216,33 @@ resource "null_resource" "ufw" {
         user = var.ssh_user
         private_key = file(pathexpand(var.ssh_private_key_path))
     }
-    
+
     provisioner "file" {
-        content = templatefile("${path.module}/templates/application-ufw-profile.tftpl", {
+        content = var.application_ufw_name != null ? templatefile("${path.module}/templates/application-ufw-profile.tftpl", {
             app_name = var.application_ufw_name
             description = var.application_ufw_description
             ports_csv = join("|", var.application_ufw_ports)
-        })
+        }) : ""
         destination = "/tmp/application-ufw-profile"
     }
 
     provisioner "remote-exec" {
-        inline = [
-            "sudo apt-get update -y",
-            "sudo apt-get install -y ufw",
-            "sudo ufw allow OpenSSH",
-            "sudo ufw default deny incoming",
-            "sudo ufw default allow outgoing",
-            "sudo install -o root -g root -m 0644 /tmp/application-ufw-profile /etc/ufw/applications.d/${var.application_ufw_name}",
-            "sudo ufw allow ${var.application_ufw_name}",
-            "sudo ufw --force enable"
-        ]
+        inline = concat(
+            [
+                "sudo apt-get update -y",
+                "sudo apt-get install -y ufw",
+                "sudo ufw allow OpenSSH",
+                "sudo ufw default deny incoming",
+                "sudo ufw default allow outgoing",
+            ],
+            var.application_ufw_name != null ? [
+                "sudo install -o root -g root -m 0644 /tmp/application-ufw-profile /etc/ufw/applications.d/${var.application_ufw_name}",
+                "sudo ufw allow ${var.application_ufw_name}",
+            ] : [],
+            [
+                "sudo ufw --force enable"
+            ]
+        )
     }
 }
 

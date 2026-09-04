@@ -1,0 +1,69 @@
+# Name for this Pi - used as the key when calling module.pi_hardening (matters for -replace addressing).
+pi_key = "traefik-external"
+
+# Static IP this Pi is moved to, and its network's gateway/DNS.
+static_ip = "172.16.0.10"
+gateway = "172.16.0.1"
+dns = ["1.1.1.1", "1.0.0.1"]
+
+# This Pi's current IP before it's moved to static_ip.
+bootstrap_ip = "172.16.0.152"
+
+# Docker provider connection string - reaches this Pi's Docker daemon over SSH.
+docker_host = "ssh://piuser@172.16.0.10:22"
+
+# Path on this Pi where Traefik's config is written and bind-mounted from. Optional; defaults to /etc/traefik.
+config_path = "/etc/traefik"
+
+# Whether to expose Traefik's dashboard on 127.0.0.1:8080. Optional; defaults to false.
+dashboard_enabled = false
+
+# Services this Traefik instance proxies to. Each key becomes a dynamic config file
+# (dynamic/<key>.yml) - Traefik's file provider watches that directory and merges every file in it.
+services = {
+    service = {
+        hostname   = "service.domain.com"
+        target_url = "http://192.168.1.10:32400"
+        entrypoint = "websecure"
+    }
+    webpage = {
+        hostname   = "webpage.domain.com"
+        target_url = "http://192.168.1.15"
+        entrypoint = "websecure"
+    }
+}
+
+# SSH user Terraform connects as (must have passwordless sudo — see pi-hardening's README).
+ssh_user = "username"
+
+# Path to the private half of the SSH key trusted on this Pi. Optional; defaults to ~/.ssh/id_ed25519.
+ssh_private_key_path = "~/.ssh/id_ed25519"
+
+# No application_ufw_name/description/ports here - Traefik's ports are Docker-published,
+# which bypasses UFW's INPUT chain entirely, so a UFW app profile for them would be a no-op.
+# The module still opens OpenSSH and enables UFW's default-deny-incoming baseline.
+
+# Max failed SSH login attempts within fail2ban_findtime before an IP is banned. Optional; defaults to 4.
+fail2ban_maxretry = 4
+
+# How long a banned IP stays banned. Optional; defaults to "1h".
+fail2ban_bantime = "1h"
+
+# Time window fail2ban_maxretry is measured over. Optional; defaults to "10m".
+fail2ban_findtime = "10m"
+
+# Whether unattended-upgrades reboots this Pi on its own when an installed update needs it. Optional; defaults to true.
+unattended_upgrades_auto_reboot = true
+
+# Time of day (Pi local time) that automatic reboot is allowed to happen, if one is needed. Optional; defaults to "03:00".
+unattended_upgrades_auto_reboot_time = "03:00"
+
+# How often (in days) the daily apt-upgrade job actually runs when its systemd timer fires. Optional; defaults to 1.
+auto_upgrades_days = 1
+
+# Email Let's Encrypt uses for certificate expiry/problem notifications.
+acme_email = "name@domain.com"
+
+# Whether routers request a cert via Let's Encrypt. Optional; defaults to true - leave it
+# true here, this Pi is internet-facing and uses real Let's Encrypt certs via HTTP-01.
+use_acme = true

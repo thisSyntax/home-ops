@@ -1,6 +1,4 @@
 #!/bin/bash
-# Rendered by Terraform (set_static_ip resource). Idempotent: safe to run
-# again against a Pi that's already on this static IP.
 set -euo pipefail
 
 CON=$(nmcli -t -f NAME,DEVICE con show | grep "${interface}" | cut -d: -f1)
@@ -11,9 +9,4 @@ sudo nmcli con mod "$CON" \
   ipv4.dns "${dns_csv}" \
   ipv4.method manual
 
-# NOTE: if this actually changes the IP, `con up` tears down the SSH
-# session it's running over the instant the new address takes effect.
-# The command has already succeeded on the Pi by then - Terraform just
-# never sees the exit code. That's expected; see the remote-exec block
-# in main.tf (on_failure = continue).
 sudo nmcli con up "$CON"

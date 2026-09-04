@@ -1,10 +1,7 @@
 #!/bin/bash
 
-# Exit if any of the intermediate steps fail
 set -e
 
-# Terraform invokes bash.exe directly (non-interactive, no profile sourcing),
-# so Git for Windows' usual PATH setup never runs - add it explicitly here.
 export PATH="/c/Program Files/Git/usr/bin:$PATH"
 
 QUERY=$(cat)
@@ -18,8 +15,8 @@ SSH_USER=$(get_field user)
 KEY_PATH=$(get_field key_path)
 APP_NAME=$(get_field app_name)
 
-if [ -z "$HOST" ] || [ -z "$SSH_USER" ] || [ -z "$KEY_PATH" ] || [ -z "$APP_NAME" ]; then
-    echo "ufw-status-check.sh: missing host, user, key_path, or app_name in query input" >&2
+if [ -z "$HOST" ] || [ -z "$SSH_USER" ] || [ -z "$KEY_PATH" ]; then
+    echo "ufw-status-check.sh: missing host, user, or key_path in query input" >&2
     exit 1
 fi
 
@@ -37,7 +34,9 @@ openssh_allowed="false"
 echo "$STATUS" | grep -qE "^22/tcp \(OpenSSH\)\s+ALLOW IN\s+Anywhere" && openssh_allowed="true"
 
 app_allowed="false"
-echo "$STATUS" | grep -qE "\($APP_NAME\)\s+ALLOW IN\s+Anywhere" && app_allowed="true"
+if [ -n "$APP_NAME" ]; then
+    echo "$STATUS" | grep -qE "\($APP_NAME\)\s+ALLOW IN\s+Anywhere" && app_allowed="true"
+fi
 
 printf '{"active": "%s", "default_policy_ok": "%s", "openssh_allowed": "%s", "app_allowed": "%s"}\n' \
     "$active" "$default_policy_ok" "$openssh_allowed" "$app_allowed"

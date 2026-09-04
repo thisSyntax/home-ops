@@ -18,16 +18,19 @@ variable "ssh_private_key_path" {
     default = "~/.ssh/id_ed25519"
 }
 variable "application_ufw_name" {
-    description = "The application that will be running on this PI that needs UFW rules"
+    description = "The application that will be running on this PI that needs UFW rules. Optional - omit when the app's ports are already handled another way (e.g. a Docker-published port, which bypasses UFW's INPUT chain entirely)."
     type = string
+    default = null
 }
 variable "application_ufw_description" {
-    description = "Description for the application's UFW app profile"
+    description = "Description for the application's UFW app profile. Only used when application_ufw_name is set."
     type = string
+    default = null
 }
 variable "application_ufw_ports" {
-    description = "List of the ports that the custom applications use for UFW"
+    description = "List of the ports that the custom application uses for UFW. Only used when application_ufw_name is set."
     type = list(string)
+    default = []
 }
 variable "fail2ban_maxretry" {
     description = "Defines the maximum number of failed login attempts allowed within a specified time window (findtime)"

@@ -1,0 +1,19 @@
+http:
+  routers:
+    ${name}:
+      rule: "Host(`${hostname}`)"
+      entryPoints:
+        - ${entrypoint}
+      service: ${name}
+%{ if use_acme ~}
+      tls:
+        certResolver: letsencrypt
+%{ else ~}
+      tls: {}
+%{ endif ~}
+
+  services:
+    ${name}:
+      loadBalancer:
+        servers:
+          - url: "${target_url}"
