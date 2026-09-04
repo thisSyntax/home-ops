@@ -21,4 +21,5 @@ module "traefik" {
     auto_upgrades_days = var.auto_upgrades_days
     acme_email = var.acme_email
     use_acme = var.use_acme
+    cf_api_token_path = var.cf_api_token_path
 }

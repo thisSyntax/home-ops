@@ -61,19 +61,17 @@ unattended_upgrades_auto_reboot_time = "03:00"
 # How often (in days) the daily apt-upgrade job actually runs when its systemd timer fires. Optional; defaults to 1.
 auto_upgrades_days = 1
 
-# Email Let's Encrypt uses for certificate expiry/problem notifications. Not actually used
-# for certs on this instance (use_acme is false below) but still required input for
-# module.traefik/traefik.yml's ACME resolver block, which is left configured but unused.
+# Email Let's Encrypt uses for certificate expiry/problem notifications.
 acme_email = "name@domain.com"
 
-# This Pi is LAN-only, so it uses a locally-trusted mkcert certificate instead of Let's
-# Encrypt - routers get tls: {} and pick up the cert below via SNI matching instead of
-# requesting one from a certResolver.
-use_acme = false
+# Whether routers request a cert via Let's Encrypt. This Pi is LAN-only, but the ACME
+# DNS-01 challenge (see cf_api_token_path below) doesn't need inbound reachability - it
+# proves domain ownership via a DNS TXT record instead of an HTTP request to this Pi - so
+# it still gets a real publicly-trusted cert, the same way external-traefik-deploy does.
+use_acme = true
 
-# No mkcert_domains variable here - the mkcert certificate's covered hostnames are
-# derived automatically from every "hostname" value in services above (see main.tf's
-# locals.mkcert_domains), so there's only one place to add a new internal hostname.
-# Note this can't be a wildcard like "*.internal" even if you wanted one: NSS/Firefox
-# rejects wildcard certs whose suffix is a single label (fewer than 2 dots) - the same
-# rule that blocks "*.com" - so "*.internal" is always rejected regardless of intent.
+# Path to a local file containing a Cloudflare API token (Zone:DNS:Edit scope on the
+# relevant zone only, not full account access) used for the ACME DNS-01 challenge. Keep
+# this file outside the repo - only the path is a Terraform value, the token itself is
+# pushed to this Pi as a root-owned file (chmod 600) and never becomes Terraform state.
+cf_api_token_path = "C:/tfvars/cf-token.txt"

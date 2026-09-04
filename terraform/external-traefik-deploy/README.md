@@ -9,8 +9,7 @@ module rather than a `pi_hosts` map like `caddy-deploy`/`pihole-deploy` use.
 Applied independently from this directory, with its own state:
 
 ```bash
-cd terraform/external-traefik-deploy
-cp terraform.tfvars.example terraform.tfvars   # first time only; fill in real values
+cd terraform/external-traefik-deploy   # .envrc auto-loads here (Git Bash + direnv)
 terraform init
 terraform plan
 terraform apply
@@ -18,22 +17,27 @@ terraform apply
 
 ## Usage
 
-Unlike `caddy-deploy`/`pihole-deploy`, this directory doesn't have direnv
-wired up yet — `terraform.tfvars` lives locally in this directory
-(gitignored via the repo's `*.tfvars` rule) rather than at an external
-`C:\tfvars\...` path. `terraform.tfvars.example` is the placeholder-only
-field reference.
+Real values (including the Cloudflare API token path) live **outside this
+repo** at `C:\tfvars\external-traefik-deploy.tfvars`, loaded the same way
+`caddy-deploy`/`pihole-deploy` do — this directory's `.envrc` sets
+`TF_CLI_ARGS_plan`/`TF_CLI_ARGS_apply` to point at it, auto-loaded by
+[direnv](https://direnv.net/) when you `cd` in from Git Bash (direnv's
+PowerShell hook has real bugs on this setup — see `caddy-deploy/README.md`'s
+Usage section for the full explanation and first-time direnv setup).
+`terraform.tfvars.example` here is the placeholder-only field reference,
+never copied to a real `terraform.tfvars` in this directory.
 
 ## Why "external"
 
-This Pi gets real Let's Encrypt certificates via Traefik's HTTP-01
-challenge (`use_acme = true`, the default), which requires it to be
-reachable on port 80 from the public internet — a WAN port-forward on the
-router, set up out of band and not managed by this module. See
-`../modules/traefik-node/README.md`'s "Known gaps" section for the current
-state of that. Contrast with `internal-traefik-deploy`, which sets
-`use_acme = false` and supplies its own certificate via `mkcert` instead —
-see that directory's README.
+"External" here is about which traffic is allowed to reach this Pi's
+proxied services, not about how its certificate is obtained — both this
+project and `internal-traefik-deploy` use the same ACME DNS-01 mechanism
+(see `../modules/traefik-node/README.md`'s "Certificates" section) and
+neither depends on inbound reachability for that. This Pi still needs a real
+WAN port-forward on the router (set up out of band, not managed by this
+module) so real internet traffic can actually reach the services it proxies
+to — `internal-traefik-deploy`'s Pi deliberately has no such port-forward,
+which is the actual difference between the two.
 
 ## Files
 

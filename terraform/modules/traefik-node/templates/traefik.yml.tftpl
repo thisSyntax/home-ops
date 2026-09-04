@@ -19,9 +19,9 @@ certificatesResolvers:
   letsencrypt:
     acme:
       email: ${acme_email}
-      storage: /etc/traefik/acme.json
-      httpChallenge:
-        entryPoint: web
+      storage: /etc/traefik/acme/acme.json
+      dnsChallenge:
+        provider: cloudflare
 
 %{ if dashboard_enabled ~}
 api:

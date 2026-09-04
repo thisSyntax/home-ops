@@ -65,10 +65,11 @@ typed resource has a real `Read`, unlike `null_resource`.
 - Terraform >= 1.5 (required for `check` blocks)
 - SSH key auth already trusted on each Pi, with passwordless `sudo` for the
   relevant commands — see each project's README for the exact list
-- Real secrets/IPs are never committed — `caddy-deploy`/`pihole-deploy` keep
-  theirs in an external `.tfvars` file outside this repo (via direnv); the
-  Traefik/k3s projects use a local `terraform.tfvars`, gitignored the same
-  way (see each project's Usage section for specifics)
+- Real secrets/IPs are never committed — `caddy-deploy`/`pihole-deploy`/
+  `external-traefik-deploy`/`internal-traefik-deploy` keep theirs in an
+  external `.tfvars` file outside this repo (via direnv); `k3s-deploy` uses a
+  local `terraform.tfvars`, gitignored the same way (see each project's
+  Usage section for specifics)
 
 No CI or test suite — everything is validated with `terraform
 validate`/`terraform plan` before any real `apply`, which makes live SSH

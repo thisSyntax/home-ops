@@ -57,7 +57,10 @@ resource "null_resource" "traefik_static" {
     }
 
     provisioner "remote-exec" {
-        inline = ["sudo mkdir -p ${var.config_path}"]
+        inline = [
+            "sudo mkdir -p ${var.config_path}",
+            "sudo mkdir -p ${var.config_path}/acme"
+        ]
     }
 
     provisioner "file" {
@@ -118,8 +121,41 @@ resource "null_resource" "traefik_dynamic" {
     }
 }
 
+resource "null_resource" "cf_token" {
+    depends_on = [module.pi_hardening]
+
+    triggers = {
+        content_hash = filemd5(pathexpand(var.cf_api_token_path))
+    }
+
+    connection {
+        type = "ssh"
+        host = var.static_ip
+        user = var.ssh_user
+        private_key = file(pathexpand(var.ssh_private_key_path))
+    }
+
+    provisioner "remote-exec" {
+        inline = ["sudo mkdir -p ${var.config_path}/secrets"]
+    }
+
+    provisioner "file" {
+        source = pathexpand(var.cf_api_token_path)
+        destination = "/tmp/cf-token"
+    }
+
+    provisioner "remote-exec" {
+        inline = [
+            "sudo install -o root -g root -m 0600 /tmp/cf-token ${var.config_path}/secrets/cf-token",
+            "rm -f /tmp/cf-token"
+        ]
+    }
+}
+
 resource "docker_image" "traefik" {
     name = "traefik:v3.4"
+
+    depends_on = [null_resource.docker]
 }
 
 resource "docker_container" "traefik" {
@@ -128,13 +164,20 @@ resource "docker_container" "traefik" {
     restart = "unless-stopped"
 
     env = [
-        "TRAEFIK_STATIC_CONFIG_HASH=${null_resource.traefik_static.triggers["content_hash"]}"
+        "TRAEFIK_STATIC_CONFIG_HASH=${null_resource.traefik_static.triggers["content_hash"]}",
+        "CF_DNS_API_TOKEN_FILE=/etc/traefik/secrets/cf-token"
     ]
 
     volumes {
         host_path = var.config_path
         container_path = "/etc/traefik"
         read_only = true
+    }
+
+    volumes {
+        host_path = "${var.config_path}/acme"
+        container_path = "/etc/traefik/acme"
+        read_only = false
     }
 
     ports {
@@ -160,5 +203,6 @@ resource "docker_container" "traefik" {
         null_resource.docker,
         null_resource.traefik_static,
         null_resource.traefik_dynamic,
+        null_resource.cf_token,
     ]
 }

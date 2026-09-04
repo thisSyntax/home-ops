@@ -50,7 +50,7 @@ module.pi_hardening
   ├─ null_resource.docker
   │    └─ null_resource.traefik_static  ─┐
   │    └─ null_resource.traefik_dynamic ─┼─ docker_image.traefik ─ docker_container.traefik
-  │                                      ┘
+  │    └─ null_resource.cf_token        ─┘
 ```
 
 `null_resource.docker` installs Docker via `get.docker.com` and adds
@@ -59,10 +59,16 @@ automatically). `null_resource.traefik_static` and `.traefik_dynamic` push
 `traefik.yml` and each service's dynamic config file over SSH via `file`/
 `remote-exec` provisioners rather than the `hashicorp/local` provider's
 `local_file`, which writes to wherever Terraform itself runs rather than to
-the remote Docker host the container is on. `docker_image`/`docker_container`
-are real typed resources from `kreuzwerker/docker`, connected to that Pi's
-daemon over SSH via the module's own `provider "docker"` block (see
-`providers.tf`).
+the remote Docker host the container is on. `null_resource.cf_token` pushes
+the Cloudflare API token used for ACME DNS-01 (see below) to the Pi the same
+way, as a root-owned file — never through `docker_container`'s `env`, so the
+token value itself never lands in Terraform state. `docker_image`/
+`docker_container` are real typed resources from `kreuzwerker/docker`,
+connected to that Pi's daemon over SSH via the module's own
+`provider "docker"` block (see `providers.tf`); `docker_image` has an
+explicit `depends_on = [null_resource.docker]` since nothing else ties the
+two together — without it, nothing guarantees Terraform waits for Docker to
+actually finish installing before the provider tries to reach it.
 
 **Why `docker_container.traefik` has an `env` entry nothing reads:**
 `traefik.yml` is Traefik's *static* config — read once, at process startup,
@@ -75,27 +81,48 @@ restart, since none of its own arguments changed. `env` embeds
 container (Docker's API can't mutate a running container's environment in
 place), which is what actually gets a changed `traefik.yml` picked up.
 
+## Certificates: ACME DNS-01 via Cloudflare
+
+`traefik.yml.tftpl`'s ACME resolver uses the DNS-01 challenge
+(`dnsChallenge.provider: cloudflare`) rather than HTTP-01. That's what makes
+it work for both an internet-facing and a LAN-only Pi: Let's Encrypt
+validates domain ownership by looking up a DNS TXT record Traefik creates
+via Cloudflare's API, never by connecting to the Pi itself — so
+`internal-traefik-deploy` can leave `use_acme = true` and still get a real,
+publicly-trusted certificate despite having no inbound port-forward at all.
+Every `hostname` handed to this module has to be a real name in a DNS zone
+Cloudflare manages, for the same reason (`.internal`-style names don't
+work — Cloudflare can't create a TXT record in a zone it doesn't host, and
+Let's Encrypt won't issue for a name that isn't publicly registered).
+
+The Cloudflare API token itself never becomes a Terraform *value* beyond a
+local file path: `cf_api_token_path` points at a local file containing just
+the token, `null_resource.cf_token` copies it to the Pi as a root-owned file
+(`chmod 600`) at `${config_path}/secrets/cf-token`, and
+`docker_container.traefik` reads it via the `CF_DNS_API_TOKEN_FILE` env var
+— every `lego`-based DNS provider (`lego` is what Traefik uses internally
+for ACME) accepts a `_FILE`-suffixed variant of its credential env vars that
+reads from a path instead of embedding the value, so the token is never a
+plain `env` entry and never lands in Terraform state. The real access
+boundary this leaves is "root, or anyone in the Pi's `docker` group" —
+Docker group membership is root-equivalent regardless of file permissions,
+so that group is what actually needs to stay tight, not the file mode alone.
+
+`certificatesResolvers.letsencrypt.acme.storage` points at
+`/etc/traefik/acme/acme.json`, not directly under `/etc/traefik` — Traefik
+needs to create and rewrite that file itself, including setting its own
+`0600` permissions on it, which a read-only mount can't support.
+`docker_container.traefik` layers a second `volumes` block mounting just
+`${config_path}/acme` read-write inside the otherwise-`read_only = true`
+`${config_path}` mount, so only ACME storage gets write access — config,
+`dynamic/`, and the Cloudflare token stay locked read-only.
+
 ## Known gaps, not yet resolved
 
-- **`docker_container`'s `/etc/traefik` volume mount is `read_only = true`**,
-  but `traefik.yml`'s ACME resolver writes to `/etc/traefik/acme.json` at
-  runtime — Traefik can't actually obtain or renew a cert with this mount as
-  currently set.
-- **This module only ever configures Let's Encrypt's HTTP-01 challenge** in
-  `traefik.yml` (`httpChallenge`), regardless of `use_acme` — that resolver
-  block is static, unconditional config, not something the `use_acme` flag
-  removes. `use_acme = false` only changes what a *router* asks for: with it
-  false, `dynamic-service.yml.tftpl` renders `tls: {}` instead of
-  `tls: { certResolver: letsencrypt }`, so the router picks up whatever
-  static certificate matches via SNI instead of requesting one from ACME.
-  This module doesn't supply that static certificate itself — see
-  `internal-traefik-deploy/README.md` for how it generates and pushes one
-  via `mkcert`, entirely as that root module's own resource, outside this
-  one.
-- **No drift detection** on `traefik_static`/`traefik_dynamic` — unlike
-  `pi-hardening`'s file-hash `data "external"` + `check` pattern, these two
-  `null_resource`s only re-push their file when their own `triggers` hash
-  changes; nothing here notices if the file drifts on the Pi itself.
+- **No drift detection** on `traefik_static`/`traefik_dynamic`/`cf_token` —
+  unlike `pi-hardening`'s file-hash `data "external"` + `check` pattern,
+  these `null_resource`s only re-push their file when their own `triggers`
+  hash changes; nothing here notices if a file drifts on the Pi itself.
 - **Docker-published ports bypass UFW.** `pi-hardening`'s `application_ufw_*`
   variables are deliberately *not* passed from either root wrapper, because
   Docker writes its own `iptables` `DNAT`/`FORWARD` rules for published
@@ -106,19 +133,19 @@ place), which is what actually gets a changed `traefik.yml` picked up.
 
 - `main.tf` — the `module "pi_hardening"` call, `null_resource.docker`,
   `null_resource.traefik_static`, `null_resource.traefik_dynamic`
-  (`for_each = var.services`), `docker_image.traefik`,
-  `docker_container.traefik`.
+  (`for_each = var.services`), `null_resource.cf_token`,
+  `docker_image.traefik`, `docker_container.traefik`.
 - `providers.tf` — the module's own `provider "docker"` block (see above for
   why it has to live here rather than the calling root module).
 - `variables.tf` — every input: the hardening fields (`static_ip`, `gateway`,
   `dns`, `interface`, `bootstrap_ip`) plus this module's own
   (`docker_host`, `config_path`, `dashboard_enabled`, `services`,
-  `acme_email`, `use_acme`), plus pass-through fields for
-  `module.pi_hardening` (`fail2ban_*`, `unattended_upgrades_*`,
+  `acme_email`, `use_acme`, `cf_api_token_path`), plus pass-through fields
+  for `module.pi_hardening` (`fail2ban_*`, `unattended_upgrades_*`,
   `auto_upgrades_days`, `ssh_user`, `ssh_private_key_path`).
 - `versions.tf` — `hashicorp/null` and `kreuzwerker/docker`.
-- `templates/traefik.yml.tftpl` — static config (entry points, ACME
-  resolver, optional dashboard).
+- `templates/traefik.yml.tftpl` — static config (entry points, the ACME
+  resolver and its Cloudflare `dnsChallenge`, optional dashboard).
 - `templates/dynamic-service.yml.tftpl` — one router + service per file;
   rendered once per `services` entry, since Traefik's file provider watches
   a directory and merges every file it finds there.

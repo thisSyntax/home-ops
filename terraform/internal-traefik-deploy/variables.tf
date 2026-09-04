@@ -93,3 +93,7 @@ variable "use_acme" {
     type = bool
     default = true
 }
+variable "cf_api_token_path" {
+    description = "Path to a local file containing the Cloudflare API token (Zone:DNS:Edit scope) used for the ACME DNS-01 challenge. Only the path is a Terraform value - the token itself is pushed to this Pi as a root-owned file, never embedded in Terraform state."
+    type = string
+}

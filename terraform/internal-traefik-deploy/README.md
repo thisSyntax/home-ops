@@ -9,8 +9,7 @@ module rather than a `pi_hosts` map like `caddy-deploy`/`pihole-deploy` use.
 Applied independently from this directory, with its own state:
 
 ```bash
-cd terraform/internal-traefik-deploy
-cp terraform.tfvars.example terraform.tfvars   # first time only; fill in real values
+cd terraform/internal-traefik-deploy   # .envrc auto-loads here (Git Bash + direnv)
 terraform init
 terraform plan
 terraform apply
@@ -18,86 +17,48 @@ terraform apply
 
 ## Usage
 
-Unlike `caddy-deploy`/`pihole-deploy`, this directory doesn't have direnv
-wired up yet — `terraform.tfvars` lives locally in this directory
-(gitignored via the repo's `*.tfvars` rule) rather than at an external
-`C:\tfvars\...` path. `terraform.tfvars.example` is the placeholder-only
-field reference.
+Real values (including the Cloudflare API token path) live **outside this
+repo** at `C:\tfvars\internal-traefik-deploy.tfvars`, loaded the same way
+`caddy-deploy`/`pihole-deploy` do — this directory's `.envrc` sets
+`TF_CLI_ARGS_plan`/`TF_CLI_ARGS_apply` to point at it, auto-loaded by
+[direnv](https://direnv.net/) when you `cd` in from Git Bash (direnv's
+PowerShell hook has real bugs on this setup — see `caddy-deploy/README.md`'s
+Usage section for the full explanation and first-time direnv setup).
+`terraform.tfvars.example` here is the placeholder-only field reference,
+never copied to a real `terraform.tfvars` in this directory.
 
-## Certificates: mkcert, not Let's Encrypt
+## Certificates: same DNS-01 mechanism as external-traefik-deploy
 
-This Pi is LAN-only, so it can't satisfy Let's Encrypt's HTTP-01 challenge
-(needs the Pi reachable on port 80 from the public internet — fine for
-`external-traefik-deploy`, not for this one). Instead: `use_acme = false` is
-set in `terraform.tfvars`, which makes `traefik-node` render every router
-with `tls: {}` instead of requesting a cert from ACME (see that module's
-README), and this directory's own `null_resource.mkcert` supplies the actual
-certificate those routers pick up via SNI matching:
+This Pi is LAN-only, but it still gets a real, publicly-trusted certificate
+via `use_acme = true` — see `../modules/traefik-node/README.md`'s
+"Certificates" section for the DNS-01 mechanism itself (it doesn't need
+inbound reachability, so a LAN-only Pi works exactly like an internet-facing
+one here). Every hostname in `services` still has to be a real name in the
+DNS zone your `cf_api_token_path` token can manage — `.internal`-style names
+don't work with this mechanism.
 
-1. Downloads `mkcert` (arm64 Linux build) and generates a certificate
-   covering `local.mkcert_domains` directly on the Pi — the CA's private key
-   never leaves the Pi, deliberately: it's the one piece of key material
-   that could impersonate any hostname trusted on your devices, so it
-   doesn't flow through Terraform tooling or a `.tfvars` file at all.
-2. Pushes the resulting cert/key into `${config_path}/certs/`, and a
-   generated `tls.yml` (from `templates/tls.yml.tftpl`) into
-   `${config_path}/dynamic/` alongside the other dynamic config — Traefik's
-   file provider merges every file it finds there, regardless of which
-   Terraform resource wrote it.
-
-`main.tf`'s `locals.mkcert_domains` derives the covered hostnames directly
-from `[for k, v in var.services : v.hostname]` — there's no separate
-`mkcert_domains` variable to keep in sync with `services` by hand, so a new
-internal hostname only ever needs adding in one place. This can't be a
-wildcard (`*.internal`) even though that'd be convenient: NSS (and so
-Firefox) rejects any wildcard certificate whose suffix has fewer than two
-dots — the same rule that blocks `*.com` — and `.internal` has exactly one,
-so `*.internal` is always rejected regardless of intent (see Mozilla bug
-806281). Every hostname has to be listed explicitly in the resulting
-certificate's SAN.
-
-**Retrieving the CA** (one-time, same idea as `caddy-deploy`'s
-`role = "internal"` Caddyfile note about pulling Caddy's own root cert off
-its Pi): `mkcert -CAROOT` prints the directory the CA lives in (mkcert
-auto-creates it there on first use — no `mkcert -install` step is run by
-this module, since nothing browses *from* the Pi itself), then stream the
-cert out over the same `ssh` connection rather than `scp` — Windows' native
-`scp.exe` has long-standing bugs around the local file it writes to,
-especially when invoked from Git Bash, where `cat`-and-redirect avoids the
-issue entirely since it only relies on plain `ssh`:
-
-```bash
-ssh piuser@<static_ip> 'cat "$(mkcert -CAROOT)/rootCA.pem"' > rootCA.pem
-```
-
-**Trusting it, per device:** on Windows, `certutil -addstore -f "ROOT" rootCA.pem`
-from an elevated prompt (or double-click the file → *Install Certificate* →
-*Local Machine* → *Trusted Root Certification Authorities*). Other
-OSes/browsers each have their own trusted-root-store import step — this
-repo is Windows-centric so that's the one spelled out here, same as the
-Git-Bash-specific notes elsewhere.
-
-If you add a second internal Pi later: it'll generate its *own* separate
-mkcert CA unless you deliberately copy this Pi's CA key material to it —
-each one trusted separately on every client device, rather than one root
-trusted everywhere. An ACME DNS-01 challenge against a real internal DNS
-zone is the alternative worth considering if that becomes a problem: it
-gets a single cert trusted through the normal public CA chain instead of a
-per-Pi local root, at the cost of needing a DNS provider API Traefik can
-drive.
+What's specific to this Pi is **resolution, not certification**: these
+hostnames should resolve to this Pi's `static_ip` only on your internal DNS
+(e.g. Pi-hole), not via a public `A`/`CNAME` record that would actually
+route internet traffic here. Cloudflare only needs to be able to answer the
+ACME DNS-01 TXT-record challenge for the zone — it doesn't need (and
+shouldn't get) a real public record pointing at this Pi.
 
 ## Files
 
-- `main.tf` — the `module "traefik" { source = "../modules/traefik-node" ... }`
-  call (forwarding every variable through), `locals.mkcert_domains` (derived
-  from `var.services`), and `null_resource.mkcert` (see above).
+- `main.tf` — a single `module "traefik" { source = "../modules/traefik-node" ... }`
+  call, forwarding every variable through. Identical in shape to
+  `external-traefik-deploy/main.tf` — the two directories exist separately
+  because of the Docker-provider constraint explained in
+  `../modules/traefik-node/README.md`, not because of any remaining
+  difference in how certs are obtained.
 - `variables.tf` — mirrors `../modules/traefik-node/variables.tf` exactly;
   no directory-specific variables of its own.
-- `templates/tls.yml.tftpl` — the static-certificate declaration pushed into
-  Traefik's `dynamic/` directory; the only template that lives here rather
-  than in `traefik-node`, since it's specific to this Pi's cert strategy.
 - `terraform.tfvars.example` — placeholder-only field reference for this
   specific Pi.
+- `.envrc` — direnv config, sets `TF_CLI_ARGS_plan`/`TF_CLI_ARGS_apply` to
+  point at `C:\tfvars\internal-traefik-deploy.tfvars`. Gitignored along with
+  everything direnv generates locally.
 
 No `versions.tf` here — this directory has no resources or `provider` blocks
 of its own, so Terraform resolves the required providers transitively

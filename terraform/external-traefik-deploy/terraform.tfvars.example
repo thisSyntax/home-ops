@@ -65,5 +65,11 @@ auto_upgrades_days = 1
 acme_email = "name@domain.com"
 
 # Whether routers request a cert via Let's Encrypt. Optional; defaults to true - leave it
-# true here, this Pi is internet-facing and uses real Let's Encrypt certs via HTTP-01.
+# true here, this Pi is internet-facing and uses real Let's Encrypt certs.
 use_acme = true
+
+# Path to a local file containing a Cloudflare API token (Zone:DNS:Edit scope on the
+# relevant zone only, not full account access) used for the ACME DNS-01 challenge. Keep
+# this file outside the repo - only the path is a Terraform value, the token itself is
+# pushed to this Pi as a root-owned file (chmod 600) and never becomes Terraform state.
+cf_api_token_path = "C:/tfvars/cf-token-external.txt"
