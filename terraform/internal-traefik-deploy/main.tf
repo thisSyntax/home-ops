@@ -7,9 +7,10 @@ module "traefik" {
     dns = var.dns
     interface = var.interface
     bootstrap_ip = var.bootstrap_ip
-    docker_host = var.docker_host
     config_path = var.config_path
     dashboard_enabled = var.dashboard_enabled
+    dashboard_hostname = var.dashboard_hostname
+    dashboard_htpasswd_path = var.dashboard_htpasswd_path
     services = var.services
     ssh_user = var.ssh_user
     ssh_private_key_path = var.ssh_private_key_path

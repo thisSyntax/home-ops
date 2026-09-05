@@ -37,6 +37,13 @@ matches the `Telmate/proxmox` provider's older v2.x examples but not `~> 3.0`
 `var.proxmox_cluster`, `var.proxmox_token_id`, `var.proxmox_token_secret`,
 and `var.vms`, none of which are declared yet.
 
+Also not yet addressed: `provider "proxmox"` hardcodes `pm_tls_insecure =
+true`, so `proxmox_token_secret` is sent with TLS verification disabled
+unconditionally. Fine for a first draft against a self-signed Proxmox host on
+a trusted LAN, but worth turning into an explicit variable (defaulting to
+`false`) once this module is otherwise ready, so disabling verification is a
+conscious choice rather than a silent hardcode.
+
 ## Files
 
 - `main.tf` — `provider "proxmox"` and a first-draft `proxmox_vm_qemu`

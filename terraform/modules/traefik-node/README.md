@@ -16,15 +16,18 @@ This module's `module "pi_hardening"` call inherits every prerequisite of
 it up), Terraform >= 1.5, and the Windows/Git-Bash `bash.exe` path gotcha for
 the drift-check scripts. **See that module's own README** for all of it;
 none of it is repeated here. On top of that, this module also needs Docker
-reachable at `docker_host` once `null_resource.docker` has run — the same
-`ssh_user`/SSH key is what the `kreuzwerker/docker` provider connects with.
+reachable over SSH once `null_resource.docker` has run — `providers.tf`
+computes the `kreuzwerker/docker` provider's connection string as
+`"ssh://${var.ssh_user}@${var.static_ip}:22"`, so it's always the same
+`ssh_user`/SSH key/host already used everywhere else in this module, with no
+separate value to keep in sync.
 
 ## Why one Pi per module call, not a `pi_hosts` map
 
 Every other project in this repo (`pi-hardening`, `caddy-deploy`,
 `pihole-deploy`) takes a `pi_hosts` map and `for_each`s over it to handle any
 number of Pis from one root module. This module can't do that, because it
-owns its own `provider "docker" { host = var.docker_host }"` — and Terraform
+owns its own `provider "docker" { host = "ssh://..." }` block — and Terraform
 providers cannot be created dynamically from a `for_each`/`count`, on either
 the provider block itself or the module call that would supply a different
 one per instance. That's a hard constraint in Terraform's own language, not
@@ -48,9 +51,11 @@ The practical result: one Pi per directory, each with independent state —
 ```
 module.pi_hardening
   ├─ null_resource.docker
-  │    └─ null_resource.traefik_static  ─┐
-  │    └─ null_resource.traefik_dynamic ─┼─ docker_image.traefik ─ docker_container.traefik
-  │    └─ null_resource.cf_token        ─┘
+  │    └─ null_resource.traefik_static   ─┐
+  │    └─ null_resource.traefik_dynamic  ─┤
+  │    └─ null_resource.cf_token         ─┼─ docker_image.traefik ─ docker_container.traefik
+  │    └─ null_resource.dashboard_auth    │  (only when dashboard_enabled)
+  │    └─ null_resource.dashboard_dynamic─┘  (only when dashboard_enabled)
 ```
 
 `null_resource.docker` installs Docker via `get.docker.com` and adds
@@ -80,6 +85,23 @@ restart, since none of its own arguments changed. `env` embeds
 `ForceNew` in this provider — changing it destroys and recreates the
 container (Docker's API can't mutate a running container's environment in
 place), which is what actually gets a changed `traefik.yml` picked up.
+
+## Dashboard: router + basicAuth, not a built-in login
+
+`dashboard_enabled` no longer opens a loopback-only port (8080) for the
+dashboard — Traefik v3 has no built-in username/password auth to put behind
+it anyway. Instead, when `dashboard_enabled = true`, `traefik.yml.tftpl`
+enables the API/dashboard (`api: {}`), and `null_resource.dashboard_dynamic`
+renders `templates/dashboard.yml.tftpl` into `dynamic/dashboard.yml` — a
+normal file-provider router on `dashboard_hostname`'s `Host()` rule, on the
+same `websecure` entrypoint as every proxied service, gated by a `basicAuth`
+middleware. `null_resource.dashboard_auth` pushes the credentials file itself
+(`dashboard_htpasswd_path`, an `htpasswd`-format `user:hash` file) to
+`${config_path}/secrets/dashboard-users` the same way `cf_token` pushes the
+Cloudflare token — via the `file` provisioner's `source`, never `content`, so
+the hash never becomes Terraform state. The dashboard UI is served at
+`/dashboard/` — note the trailing slash; Traefik 404s on `/dashboard` without
+it rather than redirecting.
 
 ## Certificates: ACME DNS-01 via Cloudflare
 
@@ -119,10 +141,11 @@ needs to create and rewrite that file itself, including setting its own
 
 ## Known gaps, not yet resolved
 
-- **No drift detection** on `traefik_static`/`traefik_dynamic`/`cf_token` —
-  unlike `pi-hardening`'s file-hash `data "external"` + `check` pattern,
-  these `null_resource`s only re-push their file when their own `triggers`
-  hash changes; nothing here notices if a file drifts on the Pi itself.
+- **No drift detection** on `traefik_static`/`traefik_dynamic`/`cf_token`/
+  `dashboard_auth`/`dashboard_dynamic` — unlike `pi-hardening`'s file-hash
+  `data "external"` + `check` pattern, these `null_resource`s only re-push
+  their file when their own `triggers` hash changes; nothing here notices if
+  a file drifts on the Pi itself.
 - **Docker-published ports bypass UFW.** `pi-hardening`'s `application_ufw_*`
   variables are deliberately *not* passed from either root wrapper, because
   Docker writes its own `iptables` `DNAT`/`FORWARD` rules for published
@@ -134,18 +157,25 @@ needs to create and rewrite that file itself, including setting its own
 - `main.tf` — the `module "pi_hardening"` call, `null_resource.docker`,
   `null_resource.traefik_static`, `null_resource.traefik_dynamic`
   (`for_each = var.services`), `null_resource.cf_token`,
-  `docker_image.traefik`, `docker_container.traefik`.
-- `providers.tf` — the module's own `provider "docker"` block (see above for
-  why it has to live here rather than the calling root module).
+  `null_resource.dashboard_auth`/`null_resource.dashboard_dynamic`
+  (`count = var.dashboard_enabled ? 1 : 0`), `docker_image.traefik`,
+  `docker_container.traefik`.
+- `providers.tf` — the module's own `provider "docker"` block, host computed
+  as `"ssh://${var.ssh_user}@${var.static_ip}:22"` (see above for why the
+  provider block has to live here rather than the calling root module).
 - `variables.tf` — every input: the hardening fields (`static_ip`, `gateway`,
-  `dns`, `interface`, `bootstrap_ip`) plus this module's own
-  (`docker_host`, `config_path`, `dashboard_enabled`, `services`,
-  `acme_email`, `use_acme`, `cf_api_token_path`), plus pass-through fields
-  for `module.pi_hardening` (`fail2ban_*`, `unattended_upgrades_*`,
-  `auto_upgrades_days`, `ssh_user`, `ssh_private_key_path`).
+  `dns`, `interface`, `bootstrap_ip`) plus this module's own (`config_path`,
+  `dashboard_enabled`, `dashboard_hostname`, `dashboard_htpasswd_path`,
+  `services`, `acme_email`, `use_acme`, `cf_api_token_path`), plus
+  pass-through fields for `module.pi_hardening` (`fail2ban_*`,
+  `unattended_upgrades_*`, `auto_upgrades_days`, `ssh_user`,
+  `ssh_private_key_path`).
 - `versions.tf` — `hashicorp/null` and `kreuzwerker/docker`.
 - `templates/traefik.yml.tftpl` — static config (entry points, the ACME
-  resolver and its Cloudflare `dnsChallenge`, optional dashboard).
+  resolver and its Cloudflare `dnsChallenge`, `api: {}` when
+  `dashboard_enabled`).
 - `templates/dynamic-service.yml.tftpl` — one router + service per file;
   rendered once per `services` entry, since Traefik's file provider watches
   a directory and merges every file it finds there.
+- `templates/dashboard.yml.tftpl` — the dashboard's own router + `basicAuth`
+  middleware, rendered only when `dashboard_enabled` (see "Dashboard" above).

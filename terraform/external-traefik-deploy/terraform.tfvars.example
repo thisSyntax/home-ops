@@ -9,13 +9,14 @@ dns = ["1.1.1.1", "1.0.0.1"]
 # This Pi's current IP before it's moved to static_ip.
 bootstrap_ip = "172.16.0.152"
 
-# Docker provider connection string - reaches this Pi's Docker daemon over SSH.
-docker_host = "ssh://piuser@172.16.0.10:22"
-
 # Path on this Pi where Traefik's config is written and bind-mounted from. Optional; defaults to /etc/traefik.
 config_path = "/etc/traefik"
 
-# Whether to expose Traefik's dashboard on 127.0.0.1:8080. Optional; defaults to false.
+# Whether to expose Traefik's dashboard via a dedicated router + basicAuth
+# middleware, on the same websecure (443) entrypoint as proxied services.
+# Optional; defaults to false. When true, also set dashboard_hostname and
+# dashboard_htpasswd_path - see internal-traefik-deploy's tfvars.example for
+# the full pattern.
 dashboard_enabled = false
 
 # Services this Traefik instance proxies to. Each key becomes a dynamic config file

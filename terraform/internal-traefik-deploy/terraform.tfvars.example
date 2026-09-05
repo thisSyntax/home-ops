@@ -9,14 +9,25 @@ dns = ["1.1.1.1", "1.0.0.1"]
 # This Pi's current IP before it's moved to static_ip.
 bootstrap_ip = "192.168.0.155"
 
-# Docker provider connection string - reaches this Pi's Docker daemon over SSH.
-docker_host = "ssh://piuser@192.168.0.5:22"
-
 # Path on this Pi where Traefik's config is written and bind-mounted from. Optional; defaults to /etc/traefik.
 config_path = "/etc/traefik"
 
-# Whether to expose Traefik's dashboard on 127.0.0.1:8080. Optional; defaults to false.
+# Whether to expose Traefik's dashboard via a dedicated router + basicAuth
+# middleware, on the same websecure (443) entrypoint as proxied services.
+# Optional; defaults to false.
 dashboard_enabled = true
+
+# Hostname for the dashboard's Host() router rule - must be a real name in the
+# Cloudflare-managed DNS zone, same as any services entry. Required when
+# dashboard_enabled is true.
+dashboard_hostname = "traefik-dashboard.internal.example.com"
+
+# Path to a local htpasswd file (basicAuth credentials) gating the dashboard.
+# Generate with `openssl passwd -apr1 'password'` (MD5) or, for bcrypt,
+# `docker run --rm httpd:alpine htpasswd -nbB user 'password'` - either way,
+# keep this file outside the repo; only the path is a Terraform value.
+# Required when dashboard_enabled is true.
+dashboard_htpasswd_path = "C:/tfvars/dashboard-users.txt"
 
 # Services this Traefik instance proxies to. Each key becomes a dynamic config file
 # (dynamic/<key>.yml) - Traefik's file provider watches that directory and merges every file in it.

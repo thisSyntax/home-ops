@@ -1,3 +1,3 @@
 provider "docker" {
-    host = var.docker_host
+    host = "ssh://${var.ssh_user}@${var.static_ip}:22"
 }

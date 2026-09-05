@@ -44,6 +44,15 @@ route internet traffic here. Cloudflare only needs to be able to answer the
 ACME DNS-01 TXT-record challenge for the zone — it doesn't need (and
 shouldn't get) a real public record pointing at this Pi.
 
+## Dashboard
+
+This Pi's `terraform.tfvars.example` turns on `dashboard_enabled` — see
+`../modules/traefik-node/README.md`'s "Dashboard" section for the
+router/`basicAuth` mechanism itself. `dashboard_hostname` needs internal-only
+DNS resolution to this Pi's `static_ip`, the same as any `services` entry
+(see "Certificates" above); remember the dashboard UI lives at
+`/dashboard/` with a trailing slash.
+
 ## Files
 
 - `main.tf` — a single `module "traefik" { source = "../modules/traefik-node" ... }`

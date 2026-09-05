@@ -23,19 +23,25 @@ variable "bootstrap_ip" {
     description = "This Pi's current IP before it's moved to static_ip"
     type = string
 }
-variable "docker_host" {
-    description = "Docker provider connection string for this Pi, e.g. ssh://piuser@192.168.0.5:22"
-    type = string
-}
 variable "config_path" {
     description = "Path on this Pi where Traefik's config is written and bind-mounted from"
     type = string
     default = "/etc/traefik"
 }
 variable "dashboard_enabled" {
-    description = "Whether to expose Traefik's dashboard on 127.0.0.1:8080"
+    description = "Whether to expose Traefik's dashboard via a dedicated router + basicAuth middleware on dashboard_hostname, riding the same websecure entrypoint as proxied services"
     type = bool
     default = false
+}
+variable "dashboard_hostname" {
+    description = "Hostname for the Traefik dashboard's Host() router rule. Required when dashboard_enabled is true; must be a real name in the Cloudflare-managed DNS zone, same as any services entry."
+    type = string
+    default = null
+}
+variable "dashboard_htpasswd_path" {
+    description = "Path to a local htpasswd file (basicAuth credentials) gating the Traefik dashboard. Required when dashboard_enabled is true. Only the path is a Terraform value - the file itself is pushed to this Pi as a root-owned file via file()'s source, never embedded as content, so the credentials never land in Terraform state."
+    type = string
+    default = null
 }
 variable "services" {
     description = "Map of services this Traefik instance proxies to, one dynamic config file per entry"

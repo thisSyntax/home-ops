@@ -24,7 +24,5 @@ certificatesResolvers:
         provider: cloudflare
 
 %{ if dashboard_enabled ~}
-api:
-  dashboard: true
-  insecure: true
+api: {}
 %{ endif ~}

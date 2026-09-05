@@ -152,6 +152,73 @@ resource "null_resource" "cf_token" {
     }
 }
 
+resource "null_resource" "dashboard_auth" {
+    count = var.dashboard_enabled ? 1 : 0
+    depends_on = [module.pi_hardening]
+
+    triggers = {
+        content_hash = filemd5(pathexpand(var.dashboard_htpasswd_path))
+    }
+
+    connection {
+        type = "ssh"
+        host = var.static_ip
+        user = var.ssh_user
+        private_key = file(pathexpand(var.ssh_private_key_path))
+    }
+
+    provisioner "remote-exec" {
+        inline = ["sudo mkdir -p ${var.config_path}/secrets"]
+    }
+
+    provisioner "file" {
+        source = pathexpand(var.dashboard_htpasswd_path)
+        destination = "/tmp/dashboard-users"
+    }
+
+    provisioner "remote-exec" {
+        inline = [
+            "sudo install -o root -g root -m 0600 /tmp/dashboard-users ${var.config_path}/secrets/dashboard-users",
+            "rm -f /tmp/dashboard-users"
+        ]
+    }
+}
+
+resource "null_resource" "dashboard_dynamic" {
+    count = var.dashboard_enabled ? 1 : 0
+    depends_on = [module.pi_hardening]
+
+    triggers = {
+        content_hash = md5(templatefile("${path.module}/templates/dashboard.yml.tftpl", {
+            hostname = var.dashboard_hostname
+        }))
+    }
+
+    connection {
+        type = "ssh"
+        host = var.static_ip
+        user = var.ssh_user
+        private_key = file(pathexpand(var.ssh_private_key_path))
+    }
+
+    provisioner "remote-exec" {
+        inline = ["sudo mkdir -p ${var.config_path}/dynamic"]
+    }
+
+    provisioner "file" {
+        content = templatefile("${path.module}/templates/dashboard.yml.tftpl", {
+            hostname = var.dashboard_hostname
+        })
+        destination = "/tmp/dashboard.yml"
+    }
+
+    provisioner "remote-exec" {
+        inline = [
+            "sudo install -o root -g root -m 0644 /tmp/dashboard.yml ${var.config_path}/dynamic/dashboard.yml"
+        ]
+    }
+}
+
 resource "docker_image" "traefik" {
     name = "traefik:v3.4"
 
@@ -190,19 +257,12 @@ resource "docker_container" "traefik" {
         external = 443
     }
 
-    dynamic "ports" {
-        for_each = var.dashboard_enabled ? [1] : []
-        content {
-            internal = 8080
-            external = 8080
-            ip = "127.0.0.1"
-        }
-    }
-
     depends_on = [
         null_resource.docker,
         null_resource.traefik_static,
         null_resource.traefik_dynamic,
         null_resource.cf_token,
+        null_resource.dashboard_auth,
+        null_resource.dashboard_dynamic,
     ]
 }
