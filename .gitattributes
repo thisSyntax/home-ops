@@ -1,0 +1,4 @@
+# Always check files out with LF, whatever core.autocrlf says. Templates are
+# rendered byte-for-byte onto Linux hosts, so a CRLF checkout puts \r into every
+# deployed config (and changes their hashes, re-triggering every resource).
+* text=auto eol=lf
