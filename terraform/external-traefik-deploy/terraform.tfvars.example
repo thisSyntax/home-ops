@@ -9,28 +9,43 @@ dns = ["1.1.1.1", "1.0.0.1"]
 # This Pi's current IP before it's moved to static_ip.
 bootstrap_ip = "172.16.0.152"
 
+# Network interface nmcli manages on this Pi. Optional; defaults to "eth0".
+interface = "eth0"
+
 # Path on this Pi where Traefik's config is written and bind-mounted from. Optional; defaults to /etc/traefik.
 config_path = "/etc/traefik"
 
-# Whether to expose Traefik's dashboard via a dedicated router + basicAuth
-# middleware, on the same websecure (443) entrypoint as proxied services.
-# Optional; defaults to false. When true, also set dashboard_hostname and
-# dashboard_htpasswd_path - see internal-traefik-deploy's tfvars.example for
-# the full pattern.
-dashboard_enabled = false
+# Traefik's dashboard/API via a dedicated router + basicAuth middleware, on the same
+# websecure (443) entrypoint as proxied services. Optional; defaults to false. On this
+# internet-facing Pi, always pair it with dashboard_allowed_ips - see the module README.
+dashboard_enabled = true
+
+# Hostname for the dashboard's Host() router rule - a real name in the Cloudflare-managed
+# zone, resolved only on the LAN (no public DNS record needed). Required when dashboard_enabled.
+dashboard_hostname = "external-traefik.example.com"
+
+# Local htpasswd file gating the dashboard - see internal-traefik-deploy's example for how to
+# generate one. Both Pis can share one file. Required when dashboard_enabled.
+dashboard_htpasswd_path = "C:/terraform-local/dashboard-users.txt"
+
+# Source IPs/CIDRs allowed to reach the dashboard (ipAllowList, checked before the login).
+# Optional; empty allows any source - set it to the LAN ranges here.
+dashboard_allowed_ips = ["192.168.1.0/24"]
 
 # Services this Traefik instance proxies to. Each key becomes a dynamic config file
 # (dynamic/<key>.yml) - Traefik's file provider watches that directory and merges every file in it.
+# request_headers (optional) sets/removes request headers on that route; "" removes one.
 services = {
     service = {
-        hostname   = "service.domain.com"
+        hostname   = "service.example.com"
         target_url = "http://192.168.1.10:32400"
         entrypoint = "websecure"
     }
     webpage = {
-        hostname   = "webpage.domain.com"
-        target_url = "http://192.168.1.15"
-        entrypoint = "websecure"
+        hostname        = "webpage.example.com"
+        target_url      = "http://192.168.1.15"
+        entrypoint      = "websecure"
+        request_headers = { "X-WEBAUTH-USER" = "" }   # strip an auth-proxy header from public traffic
     }
 }
 

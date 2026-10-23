@@ -9,6 +9,9 @@ dns = ["1.1.1.1", "1.0.0.1"]
 # This Pi's current IP before it's moved to static_ip.
 bootstrap_ip = "192.168.0.155"
 
+# Network interface nmcli manages on this Pi. Optional; defaults to "eth0".
+interface = "eth0"
+
 # Path on this Pi where Traefik's config is written and bind-mounted from. Optional; defaults to /etc/traefik.
 config_path = "/etc/traefik"
 
@@ -20,7 +23,7 @@ dashboard_enabled = true
 # Hostname for the dashboard's Host() router rule - must be a real name in the
 # Cloudflare-managed DNS zone, same as any services entry. Required when
 # dashboard_enabled is true.
-dashboard_hostname = "traefik-dashboard.internal.example.com"
+dashboard_hostname = "internal-traefik.example.com"
 
 # Path to a local htpasswd file (basicAuth credentials) gating the dashboard.
 # Generate with `openssl passwd -apr1 'password'` (MD5) or, for bcrypt,
@@ -29,18 +32,26 @@ dashboard_hostname = "traefik-dashboard.internal.example.com"
 # Required when dashboard_enabled is true.
 dashboard_htpasswd_path = "C:/terraform-local/dashboard-users.txt"
 
+# Source IPs/CIDRs allowed to reach the dashboard (ipAllowList, checked before the login).
+# Optional; empty (the default) allows any source - reasonable on this LAN-only Pi.
+dashboard_allowed_ips = []
+
 # Services this Traefik instance proxies to. Each key becomes a dynamic config file
 # (dynamic/<key>.yml) - Traefik's file provider watches that directory and merges every file in it.
+# Hostnames must be real names in the Cloudflare-managed zone (DNS-01 certificates), resolved
+# to this Pi only by the LAN's DNS - .internal-style names can't get a certificate.
+# request_headers (optional) sets request headers on that route.
 services = {
     service = {
-        hostname   = "service.internal"
+        hostname   = "service.example.com"
         target_url = "http://192.168.0.16:3000"
         entrypoint = "websecure"
     }
-    webpage = {
-        hostname   = "webpage.internal"
-        target_url = "http://192.168.0.15"
-        entrypoint = "websecure"
+    grafana-embed = {
+        hostname        = "grafana-embed.example.com"
+        target_url      = "http://192.168.0.20:3000"
+        entrypoint      = "websecure"
+        request_headers = { "X-WEBAUTH-USER" = "dashboard-embed" }   # Grafana auth proxy sign-in
     }
 }
 

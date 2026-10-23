@@ -72,3 +72,8 @@ pihole_app_pwhashes = {
 # Required when a pi_hosts entry sets nebula_sync_primary. Local env file (PRIMARY, REPLICAS,
 # FULL_SYNC, RUN_GRAVITY) - holds the Pi-hole passwords, so keep it outside the repo.
 nebula_sync_env_path = "C:/terraform-local/nebula-sync.env"
+
+# Optional. Nebula Sync release to install and its linux_arm64 tarball's SHA-256, from that
+# release's checksums.txt - the install aborts on a mismatch. Bump both together.
+nebula_sync_version = "0.11.2"
+nebula_sync_sha256 = "67d08bfebb4c924b64a8d8cf13aedf6bb42ea2dd7d6d5d06bddb6e5ba3991af1"
