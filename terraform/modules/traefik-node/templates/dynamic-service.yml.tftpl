@@ -5,6 +5,10 @@ http:
       entryPoints:
         - ${entrypoint}
       service: ${name}
+%{ if length(request_headers) > 0 ~}
+      middlewares:
+        - ${name}-headers
+%{ endif ~}
 %{ if use_acme ~}
       tls:
         certResolver: letsencrypt
@@ -17,3 +21,13 @@ http:
       loadBalancer:
         servers:
           - url: "${target_url}"
+%{ if length(request_headers) > 0 ~}
+
+  middlewares:
+    ${name}-headers:
+      headers:
+        customRequestHeaders:
+%{ for k, v in request_headers ~}
+          ${k}: "${v}"
+%{ endfor ~}
+%{ endif ~}

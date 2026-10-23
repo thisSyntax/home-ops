@@ -84,11 +84,12 @@ resource "null_resource" "traefik_dynamic" {
 
   triggers = {
     content_hash = md5(templatefile("${path.module}/templates/dynamic-service.yml.tftpl", {
-      name       = each.key
-      hostname   = each.value.hostname
-      target_url = each.value.target_url
-      entrypoint = each.value.entrypoint
-      use_acme   = var.use_acme
+      name            = each.key
+      hostname        = each.value.hostname
+      target_url      = each.value.target_url
+      entrypoint      = each.value.entrypoint
+      request_headers = each.value.request_headers
+      use_acme        = var.use_acme
     }))
   }
 
@@ -105,11 +106,12 @@ resource "null_resource" "traefik_dynamic" {
 
   provisioner "file" {
     content = templatefile("${path.module}/templates/dynamic-service.yml.tftpl", {
-      name       = each.key
-      hostname   = each.value.hostname
-      target_url = each.value.target_url
-      entrypoint = each.value.entrypoint
-      use_acme   = var.use_acme
+      name            = each.key
+      hostname        = each.value.hostname
+      target_url      = each.value.target_url
+      entrypoint      = each.value.entrypoint
+      request_headers = each.value.request_headers
+      use_acme        = var.use_acme
     })
     destination = "/tmp/${each.key}.yml"
   }

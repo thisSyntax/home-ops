@@ -39,16 +39,17 @@ variable "dashboard_hostname" {
   default     = null
 }
 variable "dashboard_htpasswd_path" {
-  description = "Path to a local htpasswd file (basicAuth credentials) gating the Traefik dashboard. Required when dashboard_enabled is true. Only the path is a Terraform value - the file itself is pushed to this Pi as a root-owned file, never embedded as content, so the credentials never land in Terraform state."
+  description = "Path to a local htpasswd file (basicAuth credentials) gating the Traefik dashboard. Required when dashboard_enabled is true. Only the path is a Terraform value - the file itself is pushed to this Pi as a root-owned file via file()'s source, never embedded as content, so the credentials never land in Terraform state."
   type        = string
   default     = null
 }
 variable "services" {
   description = "Map of services this Traefik instance proxies to, one dynamic config file per entry"
   type = map(object({
-    hostname   = string
-    target_url = string
-    entrypoint = string
+    hostname        = string
+    target_url      = string
+    entrypoint      = string
+    request_headers = optional(map(string), {})
   }))
 }
 variable "ssh_user" {
@@ -95,11 +96,11 @@ variable "acme_email" {
   type        = string
 }
 variable "use_acme" {
-  description = "Whether routers request a cert via Let's Encrypt (certResolver). Set false for a Pi using a manually-supplied cert instead."
+  description = "Whether routers request a cert via Let's Encrypt (certResolver). Set false for a Pi using a manually-supplied cert (e.g. mkcert) instead - the router still gets tls: {} so it can pick up a static cert via SNI matching."
   type        = bool
   default     = true
 }
 variable "cf_api_token_path" {
-  description = "Path to a local file containing the Cloudflare API token (Zone:DNS:Edit scope) used for the ACME DNS-01 challenge. Only the path is a Terraform value - the token itself is pushed to this Pi as a root-owned file, never embedded in Terraform state."
+  description = "Path to a local file containing the Cloudflare API token (Zone:DNS:Edit scope) used for the ACME DNS-01 challenge. Only the path is a Terraform value - the token itself is pushed to this Pi as a root-owned file via file()'s source, never embedded as content, so it never lands in Terraform state."
   type        = string
 }

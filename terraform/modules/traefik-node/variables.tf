@@ -46,9 +46,10 @@ variable "dashboard_htpasswd_path" {
 variable "services" {
   description = "Map of services this Traefik instance proxies to, one dynamic config file per entry"
   type = map(object({
-    hostname   = string
-    target_url = string
-    entrypoint = string
+    hostname        = string
+    target_url      = string
+    entrypoint      = string
+    request_headers = optional(map(string), {})
   }))
 }
 variable "ssh_user" {
