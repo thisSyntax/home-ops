@@ -6,10 +6,36 @@ variable "pi_hosts" {
     dns          = list(string)
     interface    = optional(string, "eth0")
     bootstrap_ip = string
+    # Fixed IPv6 interface ID (e.g. "::53") - see pi-hardening's pi_hosts. The
+    # resulting address is what goes in the router's IPv6 DNS servers.
+    ipv6_token = optional(string)
     # webserver.api.app_sudo - lets app-password sessions change settings. Nebula
     # Sync replicas need it so the primary's config can be written to them.
     app_sudo = optional(bool, false)
+    # Run Nebula Sync on this Pi, pushing its config to the replicas listed in
+    # nebula_sync_env_path's REPLICAS. Only the primary runs it.
+    nebula_sync_primary = optional(bool, false)
   }))
+
+  validation {
+    condition     = length([for k, v in var.pi_hosts : k if v.nebula_sync_primary]) <= 1
+    error_message = "At most one pi_hosts entry can set nebula_sync_primary = true - Nebula Sync runs on the primary only."
+  }
+}
+variable "nebula_sync_version" {
+  description = "Nebula Sync release installed on the primary (https://github.com/lovelaze/nebula-sync/releases), without the leading v"
+  type        = string
+  default     = "0.11.2"
+}
+variable "nebula_sync_sha256" {
+  description = "SHA-256 of that release's linux_arm64 tarball, from its checksums.txt. The install stops if the download doesn't match - update it together with nebula_sync_version."
+  type        = string
+  default     = "67d08bfebb4c924b64a8d8cf13aedf6bb42ea2dd7d6d5d06bddb6e5ba3991af1"
+}
+variable "nebula_sync_env_path" {
+  description = "Path to a local env file for Nebula Sync (PRIMARY, REPLICAS, FULL_SYNC, RUN_GRAVITY...). Required when a pi_hosts entry sets nebula_sync_primary. Only the path is a Terraform value - the file holds the Pi-hole passwords and is pushed to the primary as a root-owned file, never embedded as content, so it never lands in Terraform state."
+  type        = string
+  default     = null
 }
 variable "ssh_user" {
   description = "SSH user that will be used to connect to each PI"

@@ -20,6 +20,7 @@ module "pi_hardening" {
       dns          = v.dns
       interface    = v.interface
       bootstrap_ip = v.bootstrap_ip
+      ipv6_token   = v.ipv6_token
     }
   }
   ssh_user                             = var.ssh_user
@@ -105,6 +106,55 @@ resource "null_resource" "pihole" {
       "sudo apt-get update -y",
       "curl -sSL https://install.pi-hole.net | sudo bash -s -- --unattended",
       "sudo pihole setpassword ${var.pihole_password}"
+    ]
+  }
+}
+
+# Nebula Sync on the primary only: pushes its Pi-hole config to the replicas on
+# an hourly systemd timer. A pinned release, checked against its SHA-256 before
+# install; the env file (with the Pi-hole passwords) goes up via source like the
+# Traefik projects' Cloudflare token, so only its hash is in state.
+resource "null_resource" "nebula_sync" {
+  for_each   = { for k, v in var.pi_hosts : k => v if v.nebula_sync_primary }
+  depends_on = [null_resource.pihole]
+
+  triggers = {
+    version      = var.nebula_sync_version
+    sha256       = var.nebula_sync_sha256
+    env_hash     = filemd5(pathexpand(var.nebula_sync_env_path))
+    service_hash = filemd5("${path.module}/templates/nebula-sync.service")
+    timer_hash   = filemd5("${path.module}/templates/nebula-sync.timer")
+  }
+
+  connection {
+    type        = "ssh"
+    host        = each.value.static_ip
+    user        = var.ssh_user
+    private_key = file(pathexpand(var.ssh_private_key_path))
+  }
+
+  provisioner "file" {
+    source      = pathexpand(var.nebula_sync_env_path)
+    destination = "/tmp/nebula-sync.env"
+  }
+
+  provisioner "file" {
+    source      = "${path.module}/templates/nebula-sync.service"
+    destination = "/tmp/nebula-sync.service"
+  }
+
+  provisioner "file" {
+    source      = "${path.module}/templates/nebula-sync.timer"
+    destination = "/tmp/nebula-sync.timer"
+  }
+
+  provisioner "remote-exec" {
+    inline = [
+      "set -e", # a failed download or checksum stops here instead of enabling the timer
+      "cd /tmp && curl -fsSL -o nebula-sync.tar.gz https://github.com/lovelaze/nebula-sync/releases/download/v${var.nebula_sync_version}/nebula-sync_${var.nebula_sync_version}_linux_arm64.tar.gz && echo '${var.nebula_sync_sha256}  nebula-sync.tar.gz' | sha256sum -c - && tar xzf nebula-sync.tar.gz nebula-sync && sudo install -o root -g root -m 0755 nebula-sync /usr/local/bin/nebula-sync && rm -f nebula-sync nebula-sync.tar.gz",
+      "sudo install -D -o root -g root -m 0600 /tmp/nebula-sync.env /etc/nebula-sync/nebula-sync.env && rm -f /tmp/nebula-sync.env",
+      "sudo install -o root -g root -m 0644 /tmp/nebula-sync.service /tmp/nebula-sync.timer /etc/systemd/system/ && rm -f /tmp/nebula-sync.service /tmp/nebula-sync.timer",
+      "sudo systemctl daemon-reload && sudo systemctl enable --now nebula-sync.timer"
     ]
   }
 }

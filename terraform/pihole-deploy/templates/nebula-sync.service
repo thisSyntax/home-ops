@@ -1,0 +1,7 @@
+[Unit]
+Description=nebula-sync Pi-hole sync
+
+[Service]
+Type=oneshot
+EnvironmentFile=/etc/nebula-sync/nebula-sync.env
+ExecStart=/usr/local/bin/nebula-sync run
