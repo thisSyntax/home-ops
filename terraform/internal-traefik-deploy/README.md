@@ -18,7 +18,7 @@ terraform apply
 ## Usage
 
 Real values (including the Cloudflare API token path) live **outside this
-repo** at `C:\tfvars\internal-traefik-deploy.tfvars`, loaded the same way
+repo** at `C:\terraform-local\internal-traefik-deploy.tfvars`, loaded the same way
 `caddy-deploy`/`pihole-deploy` do — this directory's `.envrc` sets
 `TF_CLI_ARGS_plan`/`TF_CLI_ARGS_apply` to point at it, auto-loaded by
 [direnv](https://direnv.net/) when you `cd` in from Git Bash (direnv's
@@ -66,7 +66,7 @@ DNS resolution to this Pi's `static_ip`, the same as any `services` entry
 - `terraform.tfvars.example` — placeholder-only field reference for this
   specific Pi.
 - `.envrc` — direnv config, sets `TF_CLI_ARGS_plan`/`TF_CLI_ARGS_apply` to
-  point at `C:\tfvars\internal-traefik-deploy.tfvars`. Gitignored along with
+  point at `C:\terraform-local\internal-traefik-deploy.tfvars`. Gitignored along with
   everything direnv generates locally.
 
 No `versions.tf` here — this directory has no resources or `provider` blocks

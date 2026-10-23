@@ -18,7 +18,7 @@ terraform apply
 ## Usage
 
 Real values (including the Cloudflare API token path) live **outside this
-repo** at `C:\tfvars\external-traefik-deploy.tfvars`, loaded the same way
+repo** at `C:\terraform-local\external-traefik-deploy.tfvars`, loaded the same way
 `caddy-deploy`/`pihole-deploy` do — this directory's `.envrc` sets
 `TF_CLI_ARGS_plan`/`TF_CLI_ARGS_apply` to point at it, auto-loaded by
 [direnv](https://direnv.net/) when you `cd` in from Git Bash (direnv's

@@ -27,7 +27,7 @@ dashboard_hostname = "traefik-dashboard.internal.example.com"
 # `docker run --rm httpd:alpine htpasswd -nbB user 'password'` - either way,
 # keep this file outside the repo; only the path is a Terraform value.
 # Required when dashboard_enabled is true.
-dashboard_htpasswd_path = "C:/tfvars/dashboard-users.txt"
+dashboard_htpasswd_path = "C:/terraform-local/dashboard-users.txt"
 
 # Services this Traefik instance proxies to. Each key becomes a dynamic config file
 # (dynamic/<key>.yml) - Traefik's file provider watches that directory and merges every file in it.
@@ -85,4 +85,4 @@ use_acme = true
 # relevant zone only, not full account access) used for the ACME DNS-01 challenge. Keep
 # this file outside the repo - only the path is a Terraform value, the token itself is
 # pushed to this Pi as a root-owned file (chmod 600) and never becomes Terraform state.
-cf_api_token_path = "C:/tfvars/cf-token.txt"
+cf_api_token_path = "C:/terraform-local/cf-token.txt"

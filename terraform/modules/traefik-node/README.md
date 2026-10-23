@@ -130,6 +130,28 @@ boundary this leaves is "root, or anyone in the Pi's `docker` group" —
 Docker group membership is root-equivalent regardless of file permissions,
 so that group is what actually needs to stay tight, not the file mode alone.
 
+### Creating the token
+
+Each Pi gets its own token, so the internet-facing Pi's can be revoked
+without touching the internal one:
+
+1. Cloudflare dashboard → **My Profile → API Tokens → Create Token**.
+2. Start from the **Edit zone DNS** template, and under **Zone Resources**
+   include only the specific zone the `hostname`s live in — not all zones.
+   Match the permissions of the token already working on the other Pi.
+3. Name it after the Pi (e.g. `traefik-external`) so it's identifiable in
+   the token list.
+4. Save the token alone (no quotes, no `KEY=`) in a file under
+   `C:\terraform-local\` — `cf-token.txt` for `internal-traefik-deploy`,
+   `cf-token-external.txt` for `external-traefik-deploy` — and set
+   `cf_api_token_path` in that project's tfvars to it.
+
+`null_resource.cf_token` triggers on the file's hash, so rotating the token
+is: replace the file's contents, then `plan`/`apply` — the new token is
+pushed to the Pi on the next apply. That doesn't recreate the container
+(its env only tracks the static config's hash), so `docker restart traefik`
+on the Pi afterwards to be sure Traefik picks up the new token.
+
 `certificatesResolvers.letsencrypt.acme.storage` points at
 `/etc/traefik/acme/acme.json`, not directly under `/etc/traefik` — Traefik
 needs to create and rewrite that file itself, including setting its own

@@ -26,7 +26,7 @@ purely a Caddy concern.
 ## Usage
 
 Real values (including the Cloudflare API token) live **outside this repo**
-at `C:\tfvars\caddy-deploy.tfvars` — not in a local `terraform.tfvars` —
+at `C:\terraform-local\caddy-deploy.tfvars` — not in a local `terraform.tfvars` —
 specifically so they can't end up committed even if `.gitignore` were ever
 misconfigured. `terraform.tfvars.example` in this directory is just the
 placeholder-only template for reference/onboarding; it's never copied to a
@@ -44,7 +44,7 @@ terraform plan
 terraform apply
 ```
 
-First time setting this up on a new machine: create `C:\tfvars\caddy-deploy.tfvars`
+First time setting this up on a new machine: create `C:\terraform-local\caddy-deploy.tfvars`
 with real values (use `terraform.tfvars.example` as the field reference),
 install direnv, add `eval "$(direnv hook bash)"` to `~/.bashrc` (Git Bash
 also needs a `~/.bash_profile` that sources it, or interactive shells won't
@@ -129,5 +129,5 @@ module, unlike the hardening resources.)
   values live outside the repo (see Usage above), this is never copied to
   a real `terraform.tfvars` here.
 - `.envrc` — direnv config, sets `TF_CLI_ARGS_plan`/`TF_CLI_ARGS_apply` to
-  point at `C:\tfvars\caddy-deploy.tfvars`. Gitignored along with
+  point at `C:\terraform-local\caddy-deploy.tfvars`. Gitignored along with
   everything direnv generates locally.

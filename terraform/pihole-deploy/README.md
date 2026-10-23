@@ -25,7 +25,7 @@ terraform apply
 ## Usage
 
 Real values (including the Pi-hole password) live **outside this repo** at
-`C:\tfvars\pihole-deploy.tfvars` — not in a local `terraform.tfvars` — for
+`C:\terraform-local\pihole-deploy.tfvars` — not in a local `terraform.tfvars` — for
 the same reason as `caddy-deploy`: so they can't end up committed even if
 `.gitignore` were ever misconfigured. `terraform.tfvars.example` here is the
 placeholder-only field reference, never copied to a real `terraform.tfvars`.
@@ -137,4 +137,4 @@ terraform apply -replace='null_resource.pihole["Site-NI-DNS01"]'
 - `terraform.tfvars.example` — placeholder-only field reference; real
   values live outside the repo (see Usage above).
 - `.envrc` — direnv config, points `TF_CLI_ARGS_plan`/`TF_CLI_ARGS_apply`
-  at `C:\tfvars\pihole-deploy.tfvars`. Gitignored, same as `caddy-deploy`'s.
+  at `C:\terraform-local\pihole-deploy.tfvars`. Gitignored, same as `caddy-deploy`'s.
