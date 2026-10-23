@@ -8,5 +8,13 @@ sudo nmcli con mod "$CON" \
   ipv4.gateway "${gateway}" \
   ipv4.dns "${dns_csv}" \
   ipv4.method manual
+%{ if ipv6_token != null ~}
+
+# The token only applies to eui64-generated addresses, so set that mode too
+sudo nmcli con mod "$CON" \
+  ipv6.method auto \
+  ipv6.addr-gen-mode eui64 \
+  ipv6.token "${ipv6_token}"
+%{ endif ~}
 
 sudo nmcli con up "$CON"

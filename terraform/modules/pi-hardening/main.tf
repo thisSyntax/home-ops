@@ -36,6 +36,8 @@ data "external" "static_ip" {
     expected_ip      = "${each.value.static_ip}/24"
     expected_gateway = each.value.gateway
     expected_dns     = join(",", each.value.dns)
+    # Empty means "not managed" - the check script then always reports ipv6_ok
+    expected_ipv6_token = each.value.ipv6_token != null ? each.value.ipv6_token : ""
   }
 }
 
@@ -67,17 +69,26 @@ check "static_ip_check" {
       for k, v in var.pi_hosts : k if data.external.static_ip[k].result.method_ok != "true"
     ])}"
   }
+
+  assert {
+    condition = alltrue([for k, v in var.pi_hosts : data.external.static_ip[k].result.ipv6_ok == "true"])
+    error_message = "IPv6 token/method has drifted from expected on: ${join(", ", [
+      for k, v in var.pi_hosts : k if data.external.static_ip[k].result.ipv6_ok != "true"
+    ])}"
+  }
 }
 
 resource "null_resource" "static_ip" {
   for_each = var.pi_hosts
 
-  triggers = {
+  # ipv6_token is only merged in when set, so hosts without one keep the same
+  # triggers - adding the field didn't re-run this (and drop SSH) on every Pi
+  triggers = merge({
     static_ip = each.value.static_ip
     gateway   = each.value.gateway
     dns       = join(",", each.value.dns)
     interface = each.value.interface
-  }
+  }, each.value.ipv6_token != null ? { ipv6_token = each.value.ipv6_token } : {})
 
   connection {
     type        = "ssh"
@@ -88,10 +99,11 @@ resource "null_resource" "static_ip" {
 
   provisioner "file" {
     content = templatefile("${path.module}/templates/set-static-ip.sh.tftpl", {
-      interface = each.value.interface
-      static_ip = each.value.static_ip
-      gateway   = each.value.gateway
-      dns_csv   = join(",", each.value.dns)
+      interface  = each.value.interface
+      static_ip  = each.value.static_ip
+      gateway    = each.value.gateway
+      dns_csv    = join(",", each.value.dns)
+      ipv6_token = each.value.ipv6_token
     })
     destination = "/tmp/set-static-ip.sh"
   }

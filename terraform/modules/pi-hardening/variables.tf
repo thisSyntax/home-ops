@@ -6,6 +6,10 @@ variable "pi_hosts" {
     dns          = list(string)
     interface    = optional(string, "eth0")
     bootstrap_ip = string
+    # Fixed IPv6 interface ID (e.g. "::53"), combined with whatever /64 the router
+    # advertises, so the address stays predictable even if the ISP prefix changes.
+    # Unset leaves IPv6 on NetworkManager's defaults.
+    ipv6_token = optional(string)
   }))
 }
 variable "ssh_user" {
