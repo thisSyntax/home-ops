@@ -32,7 +32,8 @@ echo "GATEWAY=\$(nmcli -g ipv4.gateway con show "\$CON")"
 echo "DNS=\$(nmcli -g ipv4.dns con show "\$CON")"
 echo "METHOD=\$(nmcli -g ipv4.method con show "\$CON")"
 echo "IPV6_METHOD=\$(nmcli -g ipv6.method con show "\$CON")"
-echo "IPV6_TOKEN=\$(nmcli -g ipv6.token con show "\$CON")"
+# -e no: -g otherwise escapes the token's colons (::54 comes back as \:\:54)
+echo "IPV6_TOKEN=\$(nmcli -e no -g ipv6.token con show "\$CON")"
 REMOTE_SCRIPT
 )
 
