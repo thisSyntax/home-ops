@@ -1,9 +1,11 @@
 locals {
   pihole_hashes = {
     for k, v in var.pi_hosts : k => md5(templatefile("${path.module}/templates/pihole.toml.tftpl", {
-      dns       = v.dns
-      hosts     = var.local_hosts
-      interface = v.interface
+      dns        = v.dns
+      hosts      = var.local_hosts
+      interface  = v.interface
+      app_pwhash = lookup(var.pihole_app_pwhashes, k, "")
+      app_sudo   = v.app_sudo
     }))
   }
 }
@@ -88,9 +90,11 @@ resource "null_resource" "pihole" {
 
   provisioner "file" {
     content = templatefile("${path.module}/templates/pihole.toml.tftpl", {
-      dns       = each.value.dns
-      interface = each.value.interface
-      hosts     = var.local_hosts
+      dns        = each.value.dns
+      interface  = each.value.interface
+      hosts      = var.local_hosts
+      app_pwhash = lookup(var.pihole_app_pwhashes, each.key, "")
+      app_sudo   = each.value.app_sudo
     })
     destination = "/tmp/pihole.toml"
   }

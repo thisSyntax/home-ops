@@ -6,6 +6,9 @@ variable "pi_hosts" {
     dns          = list(string)
     interface    = optional(string, "eth0")
     bootstrap_ip = string
+    # webserver.api.app_sudo - lets app-password sessions change settings. Nebula
+    # Sync replicas need it so the primary's config can be written to them.
+    app_sudo = optional(bool, false)
   }))
 }
 variable "ssh_user" {
@@ -68,4 +71,10 @@ variable "pihole_password" {
   description = "Defines the password for the PiHole web interface"
   type        = string
   sensitive   = true
+}
+variable "pihole_app_pwhashes" {
+  description = "Existing Pi-hole app password hash (webserver.api.app_pwhash) per pi_hosts key, carried over so a rebuilt Pi-hole accepts the same app password and API clients like Homepage keep working. Each Pi-hole has its own - Nebula Sync doesn't copy it. A Pi with no entry gets none; generate a new app password in the UI after the rebuild. A separate map rather than a pi_hosts field because pi_hosts drives for_each, which can't take sensitive values."
+  type        = map(string)
+  sensitive   = true
+  default     = {}
 }

@@ -1170,7 +1170,7 @@
     #
     # Allowed values are:
     #     A valid Pi-hole password hash
-    app_pwhash = ""
+    app_pwhash = "${app_pwhash}" ### CHANGED, default = ""
 
     # Should application password API sessions be allowed to modify config settings?
     #
@@ -1181,7 +1181,7 @@
     #
     # Allowed values are:
     #     true or false
-    app_sudo = false
+    app_sudo = ${app_sudo}%{ if app_sudo } ### CHANGED, default = false%{ endif }
 
     # Should FTL create a temporary CLI password?
     #
