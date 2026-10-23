@@ -43,6 +43,11 @@ variable "dashboard_htpasswd_path" {
   type        = string
   default     = null
 }
+variable "dashboard_allowed_ips" {
+  description = "Source IPs/CIDRs allowed to reach the dashboard and /api (Traefik ipAllowList), checked before basicAuth. Empty allows any source - fine for a LAN-only Pi, but on an internet-facing one the dashboard router shares the public 443 entrypoint, so set this to the LAN ranges."
+  type        = list(string)
+  default     = []
+}
 variable "services" {
   description = "Map of services this Traefik instance proxies to, one dynamic config file per entry"
   type = map(object({

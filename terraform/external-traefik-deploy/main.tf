@@ -11,6 +11,7 @@ module "traefik" {
   dashboard_enabled                    = var.dashboard_enabled
   dashboard_hostname                   = var.dashboard_hostname
   dashboard_htpasswd_path              = var.dashboard_htpasswd_path
+  dashboard_allowed_ips                = var.dashboard_allowed_ips
   services                             = var.services
   ssh_user                             = var.ssh_user
   ssh_private_key_path                 = var.ssh_private_key_path

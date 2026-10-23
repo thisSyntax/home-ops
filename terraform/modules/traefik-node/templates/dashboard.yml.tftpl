@@ -8,9 +8,20 @@ http:
       tls:
         certResolver: letsencrypt
       middlewares:
+%{ if length(allowed_ips) > 0 ~}
+        - dashboard-allowlist
+%{ endif ~}
         - dashboard-auth
 
   middlewares:
+%{ if length(allowed_ips) > 0 ~}
+    dashboard-allowlist:
+      ipAllowList:
+        sourceRange:
+%{ for ip in allowed_ips ~}
+          - "${ip}"
+%{ endfor ~}
+%{ endif ~}
     dashboard-auth:
       basicAuth:
         usersFile: /etc/traefik/secrets/dashboard-users

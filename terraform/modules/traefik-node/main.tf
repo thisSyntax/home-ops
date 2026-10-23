@@ -192,7 +192,8 @@ resource "null_resource" "dashboard_dynamic" {
 
   triggers = {
     content_hash = md5(templatefile("${path.module}/templates/dashboard.yml.tftpl", {
-      hostname = var.dashboard_hostname
+      hostname    = var.dashboard_hostname
+      allowed_ips = var.dashboard_allowed_ips
     }))
   }
 
@@ -209,7 +210,8 @@ resource "null_resource" "dashboard_dynamic" {
 
   provisioner "file" {
     content = templatefile("${path.module}/templates/dashboard.yml.tftpl", {
-      hostname = var.dashboard_hostname
+      hostname    = var.dashboard_hostname
+      allowed_ips = var.dashboard_allowed_ips
     })
     destination = "/tmp/dashboard.yml"
   }
