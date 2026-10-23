@@ -1,113 +1,81 @@
 # home-ops
 
-Terraform code that hardens and configures my home Raspberry Pi fleet over
-SSH — a personal project for learning Terraform's
-`for_each`/`depends_on`/provisioner/`data`/`check`/module mechanics against
-real, physical infrastructure rather than a sandbox. Public so anyone
-curious about this pattern (SSH-driven config management via
-`null_resource`, non-blocking drift detection with `check` blocks, a
-reusable child module shared across projects) can see a working example
-end to end.
-
-## What's here
+Terraform that hardens and configures my home Raspberry Pi fleet over SSH —
+Pi-hole DNS and two Traefik reverse proxies — plus an early k3s-on-Proxmox
+project. A learning project, run against real hardware. The *why* behind it
+lives in [`docs/`](docs/README.md); the READMEs are runbooks.
 
 ```
 terraform/
 ├── modules/
-│   ├── pi-hardening/  reusable module: static IP, UFW, Fail2Ban, disabled X11 forwarding, unattended-upgrades
-│   └── traefik-node/  reusable module: Docker install + a Traefik reverse-proxy container, for one Pi
-├── pihole-deploy/               installs and configures Pi-hole as DNS on two Pis
-├── external-traefik-deploy/     installs Traefik on the internet-facing Pi (calls modules/traefik-node)
-├── internal-traefik-deploy/     installs Traefik on the LAN-only Pi (calls modules/traefik-node)
-└── k3s-deploy/                  early/in-progress: k3s cluster VMs on Proxmox
+│   ├── pi-hardening/          static IP, UFW, Fail2Ban, no X11 forwarding, unattended-upgrades
+│   └── traefik-node/          pi-hardening + Docker + a Traefik container, for one Pi
+├── pihole-deploy/             Pi-hole on the primary + replica (Nebula Sync between them)
+├── internal-traefik-deploy/   Traefik on the LAN-only Pi
+├── external-traefik-deploy/   Traefik on the internet-facing (DMZ) Pi
+└── k3s-deploy/                early / in progress: k3s VMs on Proxmox
+docs/                          design notes and lessons learned
 ```
 
-`pihole-deploy` is an independent root module with its own Terraform state,
-calling the shared `modules/pi-hardening` module for the common hardening
-baseline. (An earlier `caddy-deploy` project used the same pattern; it was
-removed once the two Traefik projects replaced Caddy.)
-`external-traefik-deploy` and `internal-traefik-deploy` are two independent
-root modules — split into
-separate directories/state rather than one `pi_hosts`-map project, because
-the module they call owns its own Docker provider connection, and Terraform
-provider configurations can't be created dynamically from a `for_each` (see
-that module's README for the full explanation). `k3s-deploy` is a different
-paradigm again — it targets Proxmox's typed `proxmox_vm_qemu` resource
-rather than SSH-driving pre-existing hardware, and is still being written
-from scratch. See each directory's own README for prerequisites, usage, and
-design notes specific to it:
+Each project under `terraform/` is applied on its own, with its own state.
+Modules are never applied directly.
 
-- [`terraform/modules/pi-hardening`](terraform/modules/pi-hardening/README.md)
-- [`terraform/modules/traefik-node`](terraform/modules/traefik-node/README.md)
-- [`terraform/pihole-deploy`](terraform/pihole-deploy/README.md)
-- [`terraform/external-traefik-deploy`](terraform/external-traefik-deploy/README.md)
-- [`terraform/internal-traefik-deploy`](terraform/internal-traefik-deploy/README.md)
-- [`terraform/k3s-deploy`](terraform/k3s-deploy/README.md)
+## Set up a machine to run it
 
-## How this is built
+1. **Tools:** Terraform ≥ 1.5, Git for Windows (Git Bash at
+   `C:\Program Files\Git\usr\bin\bash.exe` — the drift checks call it by that
+   path), and [direnv](https://direnv.net/).
+2. **direnv in Git Bash:** add `eval "$(direnv hook bash)"` to `~/.bashrc`, and
+   make sure `~/.bash_profile` sources `~/.bashrc` (Git Bash offers to create
+   it). Run Terraform from **Git Bash, not PowerShell**.
+3. **Secrets, outside the repo:** create `C:\terraform-local\` with one
+   `<project>.tfvars` per project (start from that project's
+   `terraform.tfvars.example`) plus the files they point at:
 
-None of the Raspberry Pis are provisioned by Terraform — they're physical
-hardware that already exists. Every hardening resource is `null_resource` +
-`remote-exec`/`file` provisioners driving imperative SSH commands, since
-there's no Terraform provider that models "a UFW rule on an arbitrary SSH
-host" as a real typed resource. Drift detection is a hand-built layer on
-top of that (`data "external"` + `check` blocks comparing live Pi state
-against what Terraform expects), not something native to `null_resource`.
+   | File | Used by |
+   |------|---------|
+   | `cf-token.txt`, `cf-token-external.txt` | one Cloudflare token per Traefik Pi |
+   | `dashboard-users.txt` | htpasswd shared by both Traefik dashboards |
+   | `nebula-sync.env` | Nebula Sync on the primary Pi-hole |
 
-Two exceptions use real typed resources instead: `modules/traefik-node`'s
-Traefik container comes from `kreuzwerker/docker`'s `docker_image`/
-`docker_container`, and `k3s-deploy` targets Proxmox's `proxmox_vm_qemu`
-directly — both get Terraform's native drift detection for free, since a
-typed resource has a real `Read`, unlike `null_resource`.
+4. **SSH key** (`~/.ssh/id_ed25519`) trusted on every Pi.
+5. In each project directory, run `direnv allow` once and `terraform init`.
 
-## Prerequisites
-
-- Terraform >= 1.5 (required for `check` blocks)
-- SSH key auth already trusted on each Pi, with passwordless `sudo` for the
-  relevant commands — see each project's README for the exact list
-- Real secrets/IPs are never committed — `pihole-deploy`/
-  `external-traefik-deploy`/`internal-traefik-deploy` keep theirs in an
-  external `.tfvars` file outside this repo (via direnv, see below);
-  `k3s-deploy` uses a local `terraform.tfvars`, gitignored the same way (see
-  each project's Usage section for specifics)
-
-No CI or test suite — everything is validated with `terraform
-validate`/`terraform plan` before any real `apply`, which makes live SSH
-connections to real Pis and changes their actual configuration.
-
-## Secrets and direnv
-
-Real values for `pihole-deploy`, `external-traefik-deploy` and
-`internal-traefik-deploy` live **outside this repo** at
-`C:\terraform-local\<project>.tfvars` — not in a local `terraform.tfvars` —
-specifically so they can't end up committed even if `.gitignore` were ever
-misconfigured. Each project's `terraform.tfvars.example` is just the
-placeholder-only field reference; it's never copied to a real
-`terraform.tfvars`.
-
-Each of those directories has an `.envrc` (loaded automatically by
-[direnv](https://direnv.net/) when you `cd` in, via its bash hook) that sets
-`TF_CLI_ARGS_plan` and `TF_CLI_ARGS_apply` to point at that external file,
-so `plan`/`apply` pick it up with no `-var-file=` flag needed:
+## Workflow
 
 ```bash
-cd terraform/pihole-deploy   # .envrc auto-loads here (Git Bash + direnv)
-terraform init
-terraform plan
-terraform apply
+cd terraform/<project>          # .envrc points plan/apply at C:\terraform-local\<project>.tfvars
+terraform plan -out=C:/terraform-local/<project>.tfplan
+terraform apply C:/terraform-local/<project>.tfplan
+rm C:/terraform-local/<project>.tfplan     # plan files hold variable values, sensitive ones too
 ```
 
-First time setting this up on a new machine: create
-`C:\terraform-local\<project>.tfvars` with real values (use the project's
-`terraform.tfvars.example` as the field reference), install direnv, add
-`eval "$(direnv hook bash)"` to `~/.bashrc` (Git Bash also needs a
-`~/.bash_profile` that sources it, or interactive shells won't read
-`.bashrc` at all — Git Bash offers to create one automatically the first
-time it notices this), then `direnv allow` in each project directory once
-to approve its `.envrc`.
+- **`apply` is live.** It SSHes into real Pis, installs packages, rewrites
+  config, restarts services and can change a Pi's IP. Read the plan.
+- Drift checks run on every plan/apply and only **warn**. Fix drift with
+  `terraform apply -replace='<resource address>'`.
+- No CI. `terraform fmt -recursive -check` and `terraform validate` before
+  committing.
 
-This setup is Git-Bash-specific by design, not an oversight — direnv's
-PowerShell hook has real, reproducible bugs on Windows (a missing-`$HOME`
-issue, and a separate bug where `direnv export pwsh` mangles its own path
-while shelling out to bash to parse `.envrc`), while the bash hook works
-cleanly. Run the Terraform commands above from Git Bash, not PowerShell.
+## Build order (greenfield or disaster recovery)
+
+| Step | Project | Needs first |
+|------|---------|-------------|
+| 1 | [pihole-deploy](terraform/pihole-deploy/README.md) | DNS for everything else. Replica, then primary |
+| 2 | [internal-traefik-deploy](terraform/internal-traefik-deploy/README.md) | Pi-hole records pointing its hostnames at it |
+| 3 | [external-traefik-deploy](terraform/external-traefik-deploy/README.md) | The router's port-forward for 443 to it |
+
+Every Pi first needs a fresh **Raspberry Pi OS Lite (64-bit)** image with the
+SSH user and key set in Raspberry Pi Imager, plus passwordless sudo — see
+[pi-hardening's prerequisites](terraform/modules/pi-hardening/README.md#before-the-first-apply).
+To rebuild a single Pi, follow its project's runbook; the others are
+unaffected.
+
+## Conventions
+
+- `terraform fmt` style (2-space indent). `.gitattributes` forces LF line
+  endings — templates are rendered byte-for-byte onto the Pis.
+- After editing a template, check that existing resources render unchanged;
+  see [lessons learned](docs/lessons-learned.md).
+- This repo is public: nothing from `C:\terraform-local\`, no real
+  hostnames, IPs or hashes. Scan the diff before committing.
