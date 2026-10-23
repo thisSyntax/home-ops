@@ -25,15 +25,15 @@ terraform apply
 ## Usage
 
 Real values (including the Pi-hole password) live **outside this repo** at
-`C:\terraform-local\pihole-deploy.tfvars` — not in a local `terraform.tfvars` — for
-the same reason as `caddy-deploy`: so they can't end up committed even if
+`C:\terraform-local\pihole-deploy.tfvars` — not in a local `terraform.tfvars` —
+so they can't end up committed even if
 `.gitignore` were ever misconfigured. `terraform.tfvars.example` here is the
 placeholder-only field reference, never copied to a real `terraform.tfvars`.
 
 This directory's `.envrc` (loaded automatically by
 [direnv](https://direnv.net/) when you `cd` in, via its bash hook) sets
 `TF_CLI_ARGS_plan`/`TF_CLI_ARGS_apply` to point at that external file — see
-`caddy-deploy/README.md`'s Usage section for the full direnv setup
+the root `README.md`'s "Secrets and direnv" section for the full direnv setup
 instructions (installing it, the `~/.bashrc`/`~/.bash_profile` hook, why
 this is Git-Bash-specific and not PowerShell), which apply identically
 here.
@@ -44,7 +44,7 @@ Each entry needs `static_ip`/`gateway`/`bootstrap_ip` (same as the
 hardening module expects) plus one thing specific to this project:
 
 - **`dns`** does double duty here — it's both the Pi's own system resolver
-  (used by the hardening module for `nmcli`, same as in `caddy-deploy`)
+  (used by the hardening module for `nmcli`)
   *and* the value passed to Pi-hole's own `dns.upstreams` setting (what
   Pi-hole itself forwards unresolved queries to). Reusing the same list for
   both is deliberate, not an oversight — this Pi should resolve through the
@@ -123,7 +123,7 @@ terraform apply -replace='null_resource.pihole["Site-NI-DNS01"]'
 
 ## Files
 
-- `main.tf` — the `module "pi_hardening"` call (mirrors `caddy-deploy`'s),
+- `main.tf` — the `module "pi_hardening"` call,
   plus `null_resource.pihole` (install) and its `data.external`/`check`
   drift detection (see above).
 - `variables.tf` — inputs for the hardening module pass-through
@@ -137,4 +137,4 @@ terraform apply -replace='null_resource.pihole["Site-NI-DNS01"]'
 - `terraform.tfvars.example` — placeholder-only field reference; real
   values live outside the repo (see Usage above).
 - `.envrc` — direnv config, points `TF_CLI_ARGS_plan`/`TF_CLI_ARGS_apply`
-  at `C:\terraform-local\pihole-deploy.tfvars`. Gitignored, same as `caddy-deploy`'s.
+  at `C:\terraform-local\pihole-deploy.tfvars`. Gitignored.

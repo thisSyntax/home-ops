@@ -16,17 +16,18 @@ terraform/
 ├── modules/
 │   ├── pi-hardening/  reusable module: static IP, UFW, Fail2Ban, disabled X11 forwarding, unattended-upgrades
 │   └── traefik-node/  reusable module: Docker install + a Traefik reverse-proxy container, for one Pi
-├── caddy-deploy/                installs and configures Caddy as a reverse proxy on two Pis
 ├── pihole-deploy/               installs and configures Pi-hole as DNS on two Pis
 ├── external-traefik-deploy/     installs Traefik on the internet-facing Pi (calls modules/traefik-node)
 ├── internal-traefik-deploy/     installs Traefik on the LAN-only Pi (calls modules/traefik-node)
 └── k3s-deploy/                  early/in-progress: k3s cluster VMs on Proxmox
 ```
 
-`caddy-deploy` and `pihole-deploy` are independent root modules, each with
-its own Terraform state, and each calls the shared `modules/pi-hardening`
-module for the common hardening baseline. `external-traefik-deploy` and
-`internal-traefik-deploy` are two more independent root modules — split into
+`pihole-deploy` is an independent root module with its own Terraform state,
+calling the shared `modules/pi-hardening` module for the common hardening
+baseline. (An earlier `caddy-deploy` project used the same pattern; it was
+removed once the two Traefik projects replaced Caddy.)
+`external-traefik-deploy` and `internal-traefik-deploy` are two independent
+root modules — split into
 separate directories/state rather than one `pi_hosts`-map project, because
 the module they call owns its own Docker provider connection, and Terraform
 provider configurations can't be created dynamically from a `for_each` (see
@@ -38,7 +39,6 @@ design notes specific to it:
 
 - [`terraform/modules/pi-hardening`](terraform/modules/pi-hardening/README.md)
 - [`terraform/modules/traefik-node`](terraform/modules/traefik-node/README.md)
-- [`terraform/caddy-deploy`](terraform/caddy-deploy/README.md)
 - [`terraform/pihole-deploy`](terraform/pihole-deploy/README.md)
 - [`terraform/external-traefik-deploy`](terraform/external-traefik-deploy/README.md)
 - [`terraform/internal-traefik-deploy`](terraform/internal-traefik-deploy/README.md)
@@ -65,12 +65,49 @@ typed resource has a real `Read`, unlike `null_resource`.
 - Terraform >= 1.5 (required for `check` blocks)
 - SSH key auth already trusted on each Pi, with passwordless `sudo` for the
   relevant commands — see each project's README for the exact list
-- Real secrets/IPs are never committed — `caddy-deploy`/`pihole-deploy`/
+- Real secrets/IPs are never committed — `pihole-deploy`/
   `external-traefik-deploy`/`internal-traefik-deploy` keep theirs in an
-  external `.tfvars` file outside this repo (via direnv); `k3s-deploy` uses a
-  local `terraform.tfvars`, gitignored the same way (see each project's
-  Usage section for specifics)
+  external `.tfvars` file outside this repo (via direnv, see below);
+  `k3s-deploy` uses a local `terraform.tfvars`, gitignored the same way (see
+  each project's Usage section for specifics)
 
 No CI or test suite — everything is validated with `terraform
 validate`/`terraform plan` before any real `apply`, which makes live SSH
 connections to real Pis and changes their actual configuration.
+
+## Secrets and direnv
+
+Real values for `pihole-deploy`, `external-traefik-deploy` and
+`internal-traefik-deploy` live **outside this repo** at
+`C:\terraform-local\<project>.tfvars` — not in a local `terraform.tfvars` —
+specifically so they can't end up committed even if `.gitignore` were ever
+misconfigured. Each project's `terraform.tfvars.example` is just the
+placeholder-only field reference; it's never copied to a real
+`terraform.tfvars`.
+
+Each of those directories has an `.envrc` (loaded automatically by
+[direnv](https://direnv.net/) when you `cd` in, via its bash hook) that sets
+`TF_CLI_ARGS_plan` and `TF_CLI_ARGS_apply` to point at that external file,
+so `plan`/`apply` pick it up with no `-var-file=` flag needed:
+
+```bash
+cd terraform/pihole-deploy   # .envrc auto-loads here (Git Bash + direnv)
+terraform init
+terraform plan
+terraform apply
+```
+
+First time setting this up on a new machine: create
+`C:\terraform-local\<project>.tfvars` with real values (use the project's
+`terraform.tfvars.example` as the field reference), install direnv, add
+`eval "$(direnv hook bash)"` to `~/.bashrc` (Git Bash also needs a
+`~/.bash_profile` that sources it, or interactive shells won't read
+`.bashrc` at all — Git Bash offers to create one automatically the first
+time it notices this), then `direnv allow` in each project directory once
+to approve its `.envrc`.
+
+This setup is Git-Bash-specific by design, not an oversight — direnv's
+PowerShell hook has real, reproducible bugs on Windows (a missing-`$HOME`
+issue, and a separate bug where `direnv export pwsh` mangles its own path
+while shelling out to bash to parse `.envrc`), while the bash hook works
+cleanly. Run the Terraform commands above from Git Bash, not PowerShell.

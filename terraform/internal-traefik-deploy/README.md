@@ -4,7 +4,7 @@ Terraform root module for the LAN-only Traefik Pi. All of the actual logic
 (Pi hardening, Docker install, Traefik container) lives in the shared
 `../modules/traefik-node` child module this calls — **see that module's own
 README** for the dependency graph, known gaps, and why this is a single-Pi
-module rather than a `pi_hosts` map like `caddy-deploy`/`pihole-deploy` use.
+module rather than a `pi_hosts` map like `pihole-deploy` uses.
 
 Applied independently from this directory, with its own state:
 
@@ -19,11 +19,11 @@ terraform apply
 
 Real values (including the Cloudflare API token path) live **outside this
 repo** at `C:\terraform-local\internal-traefik-deploy.tfvars`, loaded the same way
-`caddy-deploy`/`pihole-deploy` do — this directory's `.envrc` sets
+`pihole-deploy` does — this directory's `.envrc` sets
 `TF_CLI_ARGS_plan`/`TF_CLI_ARGS_apply` to point at it, auto-loaded by
 [direnv](https://direnv.net/) when you `cd` in from Git Bash (direnv's
-PowerShell hook has real bugs on this setup — see `caddy-deploy/README.md`'s
-Usage section for the full explanation and first-time direnv setup).
+PowerShell hook has real bugs on this setup — see the root `README.md`'s
+"Secrets and direnv" section for the full explanation and first-time setup).
 `terraform.tfvars.example` here is the placeholder-only field reference,
 never copied to a real `terraform.tfvars` in this directory.
 

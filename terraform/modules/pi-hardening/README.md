@@ -3,7 +3,7 @@
 Reusable Terraform module that hardens a Raspberry Pi over SSH: static IP
 via `nmcli`, disabled SSH X11 forwarding, UFW, Fail2Ban, and
 unattended-upgrades. Originally written as part of a Caddy reverse-proxy
-project (see `../../caddy-deploy`), then split out here so any future
+project (`caddy-deploy`, since removed — Traefik replaced Caddy), then split out here so any future
 Raspberry Pi project can reuse the same base hardening instead of
 re-implementing it.
 
@@ -149,7 +149,7 @@ unrelated and untouched by this module.
 The resource's `remote-exec` ends with `unattended-upgrade --dry-run --debug`,
 which fails the `apply` if the rendered `Origins-Pattern` doesn't actually
 match anything the Pi's configured repos advertise — the same "fail loud on
-bad config" philosophy `caddy-deploy` uses for `caddy validate`. A clean
+bad config" philosophy as validating any rendered config before it goes live. A clean
 dry-run with zero matching packages doesn't prove much on its own (nothing
 may be pending); check the `--debug` output's `Allowed origins are: ...`
 line to confirm it's parsing real repo metadata, not silently matching
@@ -252,8 +252,8 @@ task content.
   `check` block for drift detection. A `locals` block at the top computes
   each resource's expected config hash once, shared between its own
   `triggers` and its drift check.
-- `variables.tf` — all inputs: the leaner `pi_hosts` map (no `role`/`sites`
-  — those are `caddy-deploy`-specific, not hardening concerns), `ssh_user`,
+- `variables.tf` — all inputs: the leaner `pi_hosts` map (only what
+  hardening needs — app-specific settings stay in the calling project), `ssh_user`,
   `ssh_private_key_path`, the `application_ufw_*` UFW profile settings, the
   `fail2ban_*` tunables, and the `unattended_upgrades_*`/`auto_upgrades_days`
   tunables.

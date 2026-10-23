@@ -24,8 +24,7 @@ separate value to keep in sync.
 
 ## Why one Pi per module call, not a `pi_hosts` map
 
-Every other project in this repo (`pi-hardening`, `caddy-deploy`,
-`pihole-deploy`) takes a `pi_hosts` map and `for_each`s over it to handle any
+Every other project in this repo (`pi-hardening`, `pihole-deploy`) takes a `pi_hosts` map and `for_each`s over it to handle any
 number of Pis from one root module. This module can't do that, because it
 owns its own `provider "docker" { host = "ssh://..." }` block — and Terraform
 providers cannot be created dynamically from a `for_each`/`count`, on either

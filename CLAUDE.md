@@ -11,19 +11,17 @@ terraform/
 ├── modules/
 │   ├── pi-hardening/       reusable child module: static IP, UFW, Fail2Ban, disabled X11 forwarding, unattended-upgrades over SSH
 │   └── traefik-node/       reusable child module: Docker install + a Traefik reverse-proxy container, for one Pi
-├── caddy-deploy/           root module: Caddy reverse proxy on two Pis (calls pi-hardening)
 ├── pihole-deploy/          root module: Pi-hole DNS on two Pis (calls pi-hardening)
 ├── external-traefik-deploy/  root module: Traefik on the internet-facing Pi (calls traefik-node)
 ├── internal-traefik-deploy/  root module: Traefik on the LAN-only Pi (calls traefik-node)
 └── k3s-deploy/             root module, early/in-progress: k3s cluster VMs on Proxmox (Telmate/proxmox provider)
 ```
 
-`caddy-deploy` and `pihole-deploy` are independent root modules, each with its own Terraform state, each calling the shared `modules/pi-hardening` module for the common hardening baseline. `external-traefik-deploy` and `internal-traefik-deploy` are two more independent root modules, each calling `modules/traefik-node` — split into separate directories/state rather than one `pi_hosts`-map project because that module owns its own Docker provider connection, and Terraform provider configurations can't be created dynamically from a `for_each` (see that module's own section below). `k3s-deploy` is a different paradigm again — it targets Proxmox's typed `proxmox_vm_qemu` resource rather than SSH-driving pre-existing hardware, and is still being written from scratch (see its own section below).
+`pihole-deploy` is an independent root module with its own Terraform state, calling the shared `modules/pi-hardening` module for the common hardening baseline. (An earlier `caddy-deploy` project used the same pattern; it was removed once the two Traefik projects replaced Caddy — don't recreate it.) `external-traefik-deploy` and `internal-traefik-deploy` are two independent root modules, each calling `modules/traefik-node` — split into separate directories/state rather than one `pi_hosts`-map project because that module owns its own Docker provider connection, and Terraform provider configurations can't be created dynamically from a `for_each` (see that module's own section below). `k3s-deploy` is a different paradigm again — it targets Proxmox's typed `proxmox_vm_qemu` resource rather than SSH-driving pre-existing hardware, and is still being written from scratch (see its own section below).
 
 See each directory's own README for full prerequisites, usage, and design notes:
 - [`terraform/modules/pi-hardening`](terraform/modules/pi-hardening/README.md)
 - [`terraform/modules/traefik-node`](terraform/modules/traefik-node/README.md)
-- [`terraform/caddy-deploy`](terraform/caddy-deploy/README.md)
 - [`terraform/pihole-deploy`](terraform/pihole-deploy/README.md)
 - [`terraform/external-traefik-deploy`](terraform/external-traefik-deploy/README.md)
 - [`terraform/internal-traefik-deploy`](terraform/internal-traefik-deploy/README.md)
@@ -38,23 +36,23 @@ This is a personal learning project for Terraform and Kubernetes. **Write Terraf
 Each project directory is applied independently, with its own state — there's no root-level command spanning all of them.
 
 ```bash
-cd terraform/caddy-deploy      # or pihole-deploy, external-traefik-deploy, internal-traefik-deploy, or (once further along) k3s-deploy
+cd terraform/pihole-deploy     # or external-traefik-deploy, internal-traefik-deploy, or (once further along) k3s-deploy
 terraform init
 terraform plan
 terraform apply
 ```
 
-- `modules/pi-hardening` and `modules/traefik-node` have no state or `terraform.tfvars` of their own and are never applied directly — each is only invoked via a `module` block from a root module (`caddy-deploy`/`pihole-deploy` for `pi-hardening`; `external-traefik-deploy`/`internal-traefik-deploy` for `traefik-node`, which itself calls `pi-hardening`).
-- `caddy-deploy`, `pihole-deploy`, `external-traefik-deploy`, and `internal-traefik-deploy` all load real secrets/IPs via [direnv](https://direnv.net/): each has an `.envrc` that points `TF_CLI_ARGS_plan`/`TF_CLI_ARGS_apply` at an external tfvars file under `C:\terraform-local\`, so `plan`/`apply` need no `-var-file=` flag — but only from Git Bash (direnv's PowerShell hook has reproducible bugs on this setup; see `caddy-deploy/README.md`'s Usage section for the full setup). `k3s-deploy` uses a local `terraform.tfvars` in its own directory instead (gitignored the same way), with no direnv wiring.
+- `modules/pi-hardening` and `modules/traefik-node` have no state or `terraform.tfvars` of their own and are never applied directly — each is only invoked via a `module` block from a root module (`pihole-deploy` for `pi-hardening`; `external-traefik-deploy`/`internal-traefik-deploy` for `traefik-node`, which itself calls `pi-hardening`).
+- `pihole-deploy`, `external-traefik-deploy`, and `internal-traefik-deploy` all load real secrets/IPs via [direnv](https://direnv.net/): each has an `.envrc` that points `TF_CLI_ARGS_plan`/`TF_CLI_ARGS_apply` at an external tfvars file under `C:\terraform-local\`, so `plan`/`apply` need no `-var-file=` flag — but only from Git Bash (direnv's PowerShell hook has reproducible bugs on this setup; see the root `README.md`'s "Secrets and direnv" section for the full setup). `k3s-deploy` uses a local `terraform.tfvars` in its own directory instead (gitignored the same way), with no direnv wiring.
 - `terraform validate` — fast syntax/type check, doesn't touch real infrastructure. Safe to run freely, unlike `apply`.
 - No CI, test suite, lint, or build step beyond Terraform's own tooling.
-- `apply` is not simulated: for `caddy-deploy`/`pihole-deploy`/`external-traefik-deploy`/`internal-traefik-deploy` it makes live SSH connections to real Pis and changes their actual configuration (installs packages, rewrites files, can reboot a Pi); the two Traefik projects also make live connections to each Pi's Docker daemon over SSH. For `k3s-deploy` it will create/destroy real Proxmox VMs. Treat accordingly.
+- `apply` is not simulated: for `pihole-deploy`/`external-traefik-deploy`/`internal-traefik-deploy` it makes live SSH connections to real Pis and changes their actual configuration (installs packages, rewrites files, can reboot a Pi); the two Traefik projects also make live connections to each Pi's Docker daemon over SSH. For `k3s-deploy` it will create/destroy real Proxmox VMs. Treat accordingly.
 
 ## Architecture
 
-### The `pi-hardening` pattern (shared by caddy-deploy, pihole-deploy)
+### The `pi-hardening` pattern (pihole-deploy directly; traefik-node wraps it)
 
-Neither project's Pis are provisioned by Terraform — they're physical hardware that already exists. Every resource is `null_resource` + `remote-exec`/`file` provisioners driving imperative SSH commands, since there's no Terraform provider that models "a UFW rule on an arbitrary SSH host" as a real typed resource.
+None of these Pis are provisioned by Terraform — they're physical hardware that already exists. Every resource is `null_resource` + `remote-exec`/`file` provisioners driving imperative SSH commands, since there's no Terraform provider that models "a UFW rule on an arbitrary SSH host" as a real typed resource.
 
 **Dependency graph** inside `modules/pi-hardening` (from `main.tf`'s `depends_on`, not file order):
 ```
@@ -64,10 +62,10 @@ static_ip
        └─ fail2ban
             └─ unattended_upgrades
 ```
-`ufw`, `fail2ban`, and `unattended_upgrades` are serialized because they all call `apt-get`, and two concurrent `apt-get` invocations on the same Pi would race on the dpkg lock. `disable_x11_forwarding` and `ufw` don't share `apt-get` state with each other, so they only depend on `static_ip` and run in parallel. A calling root module's own resources (e.g. `caddy-deploy`'s `caddy`, `pihole-deploy`'s `pihole`) depend on the *whole module* (`depends_on = [module.pi_hardening]`), since child-module internals aren't individually addressable from outside.
+`ufw`, `fail2ban`, and `unattended_upgrades` are serialized because they all call `apt-get`, and two concurrent `apt-get` invocations on the same Pi would race on the dpkg lock. `disable_x11_forwarding` and `ufw` don't share `apt-get` state with each other, so they only depend on `static_ip` and run in parallel. A calling root module's own resources (e.g. `pihole-deploy`'s `pihole`) depend on the *whole module* (`depends_on = [module.pi_hardening]`), since child-module internals aren't individually addressable from outside.
 
 **Drift detection**: every hardening resource has a matching `data "external"` + `check` block placed immediately before it in `main.tf`. Two comparison strategies, reused by the calling root modules for their own project-specific resource:
-- **File-hash** (`fail2ban`, `disable_x11_forwarding`, `unattended_upgrades`; also `caddy-deploy`'s `caddy`): `scripts/remote-file-hash.sh` SSHes in, hashes the deployed file, and compares it against a hash computed locally from the same `templatefile()` call that renders it (see each module's `locals` block).
+- **File-hash** (`fail2ban`, `disable_x11_forwarding`, `unattended_upgrades`): `scripts/remote-file-hash.sh` SSHes in, hashes the deployed file, and compares it against a hash computed locally from the same `templatefile()` call that renders it (see each module's `locals` block).
 - **Condition-based** (`ufw`, `static_ip`; also `pihole-deploy`'s `pihole`): no single file to hash — the drift-relevant state is live command output (`ufw status verbose`, `nmcli`, `pihole-FTL --config`) rather than something rendered locally, so each has its own script returning named `"true"`/`"false"` fields.
 - Checks are informational only — a failed check prints a warning naming the drifted host(s), never blocks `apply`, taints a resource, or self-heals anything. Fix real drift with `terraform apply -replace='<address>["<host-key>"]'` (module-prefixed for hardening resources, e.g. `module.pi_hardening.null_resource.ufw["my-pi"]`).
 - `check` blocks don't support `for_each`, so the `data` sources live at the top level of `main.tf` rather than nested inside `check` — meaning they miss the "read as the final step of apply" timing guarantee a nested data source gets. A `-replace` that genuinely fixes drift can still record `"fail"` in that same apply's `check_results`; a follow-up plain `apply` is what records an accurate pass.
@@ -96,4 +94,4 @@ Targets Proxmox directly via the `Telmate/proxmox` provider (`~> 3.0`) — a dif
 - SSH key auth already trusted on each Pi, with passwordless `sudo` for the relevant commands — see each project's README for the exact command list
 - `external-traefik-deploy`/`internal-traefik-deploy` also need Docker reachable at `docker_host` over the same SSH key, once `pi-hardening` and the Docker-install step have run
 - `external-traefik-deploy`/`internal-traefik-deploy` also need a Cloudflare-managed DNS zone and an API token scoped to `Zone:DNS:Edit` on it (not broader account access), used for the ACME DNS-01 challenge — see `modules/traefik-node/README.md`'s "Certificates" section
-- Real secrets/IPs live outside this repo: `caddy-deploy`/`pihole-deploy`/`external-traefik-deploy`/`internal-traefik-deploy` read theirs from `C:\terraform-local\<project>.tfvars` via direnv; `k3s-deploy` uses a local `terraform.tfvars` in its own directory instead. Nothing sensitive is committed here (`.gitignore` excludes all `*.tfvars` except `*.tfvars.example`)
+- Real secrets/IPs live outside this repo: `pihole-deploy`/`external-traefik-deploy`/`internal-traefik-deploy` read theirs from `C:\terraform-local\<project>.tfvars` via direnv; `k3s-deploy` uses a local `terraform.tfvars` in its own directory instead. Nothing sensitive is committed here (`.gitignore` excludes all `*.tfvars` except `*.tfvars.example`)
