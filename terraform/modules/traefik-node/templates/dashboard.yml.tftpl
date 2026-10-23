@@ -1,0 +1,16 @@
+http:
+  routers:
+    dashboard:
+      rule: "Host(`${hostname}`) && (PathPrefix(`/api`) || PathPrefix(`/dashboard`))"
+      entryPoints:
+        - websecure
+      service: api@internal
+      tls:
+        certResolver: letsencrypt
+      middlewares:
+        - dashboard-auth
+
+  middlewares:
+    dashboard-auth:
+      basicAuth:
+        usersFile: /etc/traefik/secrets/dashboard-users
