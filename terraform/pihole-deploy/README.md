@@ -50,19 +50,92 @@ hardening module expects) plus one thing specific to this project:
   both is deliberate, not an oversight — this Pi should resolve through the
   same upstream it hands out to everyone else.
 
-## Password
+Optional per-Pi fields:
 
-`pihole_password` is a single plaintext, `sensitive = true` variable shared
-across both Pis, set post-install via `pihole setpassword` rather than
-pre-seeded into `pihole.toml`:
+- **`ipv6_token`** — a fixed IPv6 interface ID (e.g. `"::53"`), passed to
+  the hardening module; see its README. Only useful if the router
+  advertises an IPv6 prefix on this network.
+- **`app_sudo`** — `webserver.api.app_sudo`, letting app-password sessions
+  change settings. Set `true` on the **replica**: Nebula Sync writes the
+  primary's config to it through an app-password session.
+- **`nebula_sync_primary`** — `true` on the **primary** only (a validation
+  rejects two). That Pi gets Nebula Sync installed; see below.
 
-- Pi-hole's password hash (BALLOON-SHA256) is salted, so the same password
-  produces a different hash on each instance — a single shared hash
-  variable can't represent "the same password on both Pis," but a shared
-  plaintext one (hashed fresh on each Pi at `setpassword` time) can.
-- `templates/pihole.toml.tftpl` leaves `webserver.api.pwhash`/`app_pwhash`
-  as static empty strings rather than templating them — the password is
-  applied by the explicit CLI command in `null_resource.pihole` instead.
+## Passwords
+
+Pi-hole v6 has two credentials per instance, handled differently:
+
+**Web interface password (`pwhash`)** — `pihole_password` is a single
+plaintext, `sensitive = true` variable shared across both Pis, applied
+post-install via `pihole setpassword` rather than pre-seeded into
+`pihole.toml`. Pi-hole's password hash (BALLOON-SHA256) is salted, so the
+same password produces a different hash on each instance — a shared hash
+variable can't represent "the same password on both Pis," but a shared
+plaintext one (hashed fresh on each Pi at `setpassword` time) can. The
+template leaves `webserver.api.pwhash` empty for that reason.
+
+**App password (`app_pwhash`)** — what API clients use (Homepage's Pi-hole
+cards, Nebula Sync on the replica). Pi-hole generates it and shows it once,
+so it can't be chosen up front; what Terraform can do is **carry an
+existing hash over** a rebuild via `pihole_app_pwhashes`, a sensitive map
+keyed like `pi_hosts`. Each Pi-hole has its own — Nebula Sync doesn't copy
+it. (It's a separate map rather than a `pi_hosts` field because `pi_hosts`
+drives `for_each`, which can't take sensitive values.) A Pi with no entry
+gets no app password.
+
+### Greenfield: a brand-new Pi-hole
+
+1. Leave the Pi out of `pihole_app_pwhashes` and apply. It comes up with
+   the web password and no app password.
+2. In that Pi-hole's web interface, create an app password (Settings → Web
+   interface / API, with expert settings shown → *Configure app password*;
+   the exact labels vary by Pi-hole version). Copy the password it shows
+   into whatever uses it (Homepage, Nebula Sync) — it's shown only once.
+3. Read the resulting hash from the Pi and add it to the tfvars, so future
+   rebuilds keep that same app password:
+   ```bash
+   ssh <ssh_user>@<pi-ip> 'sudo pihole-FTL --config webserver.api.app_pwhash'
+   ```
+   ```hcl
+   pihole_app_pwhashes = {
+       <pi_hosts key> = "<that hash>"
+   }
+   ```
+4. Plan. Adding the hash changes the rendered `pihole.toml`, so
+   `null_resource.pihole` for that Pi is **replaced** — the install sequence
+   below runs again (reinstall/repair plus `setpassword`). It writes the
+   same values, so it's safe, just not instant.
+
+### Rebuilding an existing Pi-hole
+
+Before wiping it, copy its current hash into `pihole_app_pwhashes` (step 3
+above). The rebuilt Pi-hole then accepts the same app password, and nothing
+that uses it needs updating.
+
+## Nebula Sync (primary only)
+
+[Nebula Sync](https://github.com/lovelaze/nebula-sync) runs on the primary
+and pushes its config to the replica(s) hourly (`templates/nebula-sync.service`
+and `.timer`). `null_resource.nebula_sync` installs a pinned release —
+`nebula_sync_version` plus `nebula_sync_sha256`, the `linux_arm64` tarball's
+checksum from that release's `checksums.txt` — and aborts if the download
+doesn't match. Bump both together.
+
+Its settings come from a local env file at `nebula_sync_env_path` (outside
+the repo, like the tfvars), pushed with `source` so only its hash is in
+state. For example:
+
+```ini
+PRIMARY=http://<primary-ip>|<primary password>
+REPLICAS=http://<replica-ip>|<replica password>
+FULL_SYNC=true
+RUN_GRAVITY=true
+```
+
+If the replica's credential is an app password, the replica needs
+`app_sudo = true`. On a greenfield build, deploy both Pis first, create the
+passwords (see above), write the env file, then set `nebula_sync_primary`
+on the primary and apply.
 
 ## Pi-hole: install and config
 
@@ -78,6 +151,9 @@ against Pi-hole's own documentation. The fields templated out:
   Pi-hole useful here beyond generic ad-blocking. Also via `jsonencode()` —
   bare list interpolation doesn't render as valid TOML array syntax.
 - `dns.interface` — from `pi_hosts[k].interface`.
+- `webserver.api.app_pwhash` — from `pihole_app_pwhashes[k]` (empty when
+  unset), and `webserver.api.app_sudo` — from `pi_hosts[k].app_sudo`. See
+  Passwords.
 
 Everything else (`listeningMode = "ALL"`, `webserver.api.allow_destructive
 = false`, etc.) is left as a static default in the template — not
@@ -129,7 +205,10 @@ terraform apply -replace='null_resource.pihole["Site-NI-DNS01"]'
 - `variables.tf` — inputs for the hardening module pass-through
   (`application_ufw_*`, `fail2ban_*`, `unattended_upgrades_*`,
   `auto_upgrades_days`, `ssh_private_key_path`) plus this project's own:
-  `pi_hosts`, `local_hosts` (sensitive), and `pihole_password` (sensitive).
+  `pi_hosts`, `local_hosts` (sensitive), `pihole_password` (sensitive),
+  `pihole_app_pwhashes` (sensitive), and the `nebula_sync_*` settings.
+- `templates/nebula-sync.service` / `nebula-sync.timer` — the systemd units
+  installed on the primary (see Nebula Sync).
 - `versions.tf` — `hashicorp/null` and `hashicorp/external`.
 - `templates/pihole.toml.tftpl` — see Pi-hole section above.
 - `scripts/pihole-config-check.sh` — the live-config drift check described

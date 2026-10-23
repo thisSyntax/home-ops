@@ -6,12 +6,15 @@ pi_hosts = {
         gateway = "192.168.1.1"
         dns = ["1.1.1.1", "1.0.0.1"]     # required — also used as Pi-hole's own dns.upstreams, see README
         bootstrap_ip = "192.168.1.152"    # this Pi's current IP before it's moved to static_ip
+        nebula_sync_primary = true        # optional — runs Nebula Sync, pushing to the replica (primary only)
+        ipv6_token = "::53"               # optional — fixed IPv6 interface ID, if the router advertises IPv6
     }
     Site-NI-DNS02 = {
         static_ip = "192.168.1.54"
         gateway = "192.168.1.1"
         dns = ["1.1.1.1", "1.0.0.1"]
         bootstrap_ip = "192.168.1.155"
+        app_sudo = true                   # optional — the Nebula Sync replica, so the primary can write its config
     }
 }
 
@@ -57,3 +60,15 @@ local_hosts = [
 # Pi-hole admin web interface password, shared across both Pis. Set post-install via
 # `pihole setpassword`, not pre-seeded into pihole.toml — see README.
 pihole_password = "changeme"
+
+# Optional. Each Pi-hole's existing app password hash, so a rebuild keeps it (see README,
+# "Passwords"). Leave a Pi out on a greenfield build, create its app password in the web
+# interface, then copy the hash here from `sudo pihole-FTL --config webserver.api.app_pwhash`.
+pihole_app_pwhashes = {
+    Site-NI-DNS01 = "$BALLOON-SHA256$v=1$s=1024,t=32$<salt>$<hash>"
+    Site-NI-DNS02 = "$BALLOON-SHA256$v=1$s=1024,t=32$<salt>$<hash>"
+}
+
+# Required when a pi_hosts entry sets nebula_sync_primary. Local env file (PRIMARY, REPLICAS,
+# FULL_SYNC, RUN_GRAVITY) - holds the Pi-hole passwords, so keep it outside the repo.
+nebula_sync_env_path = "C:/terraform-local/nebula-sync.env"
