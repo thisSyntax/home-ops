@@ -108,10 +108,3 @@ whitelist already rejects it.
 Routes without headers must render byte-for-byte as before; otherwise every
 route on both Pis is replaced at once. See
 [lessons-learned.md](lessons-learned.md).
-
-## Known gaps
-
-- No drift detection on the pushed Traefik files (static config, routes,
-  token, dashboard) — they're only re-pushed when their own `triggers`
-  change.
-- Docker-published ports bypass UFW (see [pi-hardening.md](pi-hardening.md)).
