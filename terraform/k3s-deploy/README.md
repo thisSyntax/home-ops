@@ -1,17 +1,11 @@
 # k3s-deploy
 
 Terraform root module for a k3s cluster's VMs on Proxmox, via the
-`Telmate/proxmox` provider — a different paradigm from every other project
-in this repo. Those SSH-drive pre-existing Raspberry Pi hardware with
-`null_resource` + `remote-exec`, since there's no Terraform provider that
-models "a UFW rule on an arbitrary SSH host" as a real typed resource. Here,
-`proxmox_vm_qemu` *is* a real typed resource — Proxmox exposes a genuine
-fleet-wide API (`pm_api_url`), so one `provider "proxmox"` block plus
-`for_each` over a `vms` map can create any number of VMs from one state, no
-per-VM directory needed (unlike `external-traefik-deploy`/
-`internal-traefik-deploy`, which are split because `kreuzwerker/docker` has
-no such fleet-wide API — see `../modules/traefik-node/README.md` for that
-constraint).
+`Telmate/proxmox` provider. Unlike the Pi projects, `proxmox_vm_qemu` is a
+real typed resource and Proxmox has a fleet-wide API, so one provider plus
+`for_each` over a `vms` map can create any number of VMs from one state (see
+[docs/design-overview.md](../../docs/design-overview.md) and
+[docs/traefik.md](../../docs/traefik.md) for the contrast).
 
 ## Status: early / in progress
 

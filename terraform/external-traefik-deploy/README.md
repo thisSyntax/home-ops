@@ -1,54 +1,35 @@
 # external-traefik-deploy
 
-Terraform root module for the internet-facing Traefik Pi. All of the actual
-logic (Pi hardening, Docker install, Traefik container) lives in the shared
-`../modules/traefik-node` child module this calls — **see that module's own
-README** for the dependency graph, known gaps, and why this is a single-Pi
-module rather than a `pi_hosts` map like `pihole-deploy` uses.
+Traefik on the **internet-facing** Pi (DMZ): the public entry point for the
+services that are exposed. One call to
+[`traefik-node`](../modules/traefik-node/README.md) (inputs, token,
+dashboard); design notes in [docs/traefik.md](../../docs/traefik.md).
 
-Applied independently from this directory, with its own state:
+Tfvars: `C:\terraform-local\external-traefik-deploy.tfvars` (start from
+`terraform.tfvars.example`).
+
+## Build or rebuild
+
+1. Flash Raspberry Pi OS Lite (64-bit) with the SSH user and key; do
+   [pi-hardening's prerequisites](../modules/pi-hardening/README.md#before-the-first-apply).
+   Set `bootstrap_ip` to the address it boots with.
+2. Make sure this Pi's own Cloudflare token file (`cf-token-external.txt`) and
+   the dashboard htpasswd file exist in `C:\terraform-local\`.
+3. **Dashboard:** if enabled, `dashboard_allowed_ips` must list the LAN
+   ranges — the dashboard shares the public 443 entrypoint.
+4. `terraform plan -out=...`, read it, apply it. Public services are down
+   from the moment the old proxy stops until this apply finishes.
+5. **Outside Terraform:** the router forwards WAN 443 (and 80, which
+   redirects) to this Pi; public DNS for each hostname points at the WAN
+   address. Any route used by an auth-proxy header elsewhere should blank
+   that header here (`request_headers = { "<header>" = "" }`).
+
+## Verify
 
 ```bash
-cd terraform/external-traefik-deploy   # .envrc auto-loads here (Git Bash + direnv)
-terraform init
-terraform plan
-terraform apply
+ssh <ssh_user>@<static_ip> 'docker ps --format "{{.Names}} {{.Status}}"'
+curl -s -o /dev/null -w '%{http_code}\n' https://<a public hostname>/     # from outside, or via public DNS
 ```
 
-## Usage
-
-Real values (including the Cloudflare API token path) live **outside this
-repo** at `C:\terraform-local\external-traefik-deploy.tfvars`, loaded the same way
-`pihole-deploy` does — this directory's `.envrc` sets
-`TF_CLI_ARGS_plan`/`TF_CLI_ARGS_apply` to point at it, auto-loaded by
-[direnv](https://direnv.net/) when you `cd` in from Git Bash (direnv's
-PowerShell hook has real bugs on this setup — see the root `README.md`'s
-"Secrets and direnv" section for the full explanation and first-time setup).
-`terraform.tfvars.example` here is the placeholder-only field reference,
-never copied to a real `terraform.tfvars` in this directory.
-
-## Why "external"
-
-"External" here is about which traffic is allowed to reach this Pi's
-proxied services, not about how its certificate is obtained — both this
-project and `internal-traefik-deploy` use the same ACME DNS-01 mechanism
-(see `../modules/traefik-node/README.md`'s "Certificates" section) and
-neither depends on inbound reachability for that. This Pi still needs a real
-WAN port-forward on the router (set up out of band, not managed by this
-module) so real internet traffic can actually reach the services it proxies
-to — `internal-traefik-deploy`'s Pi deliberately has no such port-forward,
-which is the actual difference between the two.
-
-## Files
-
-- `main.tf` — a single `module "traefik" { source = "../modules/traefik-node" ... }`
-  call, forwarding every variable through.
-- `variables.tf` — mirrors `../modules/traefik-node/variables.tf` exactly,
-  since this directory's only job is to accept a `terraform.tfvars` and pass
-  it into the module.
-- `terraform.tfvars.example` — placeholder-only field reference for this
-  specific Pi.
-
-No `versions.tf` here — this directory has no resources or `provider` blocks
-of its own, so Terraform resolves the required providers transitively
-through the module it calls.
+The dashboard should answer only from the LAN; from anywhere else it returns
+403 before any login prompt.
